@@ -13,12 +13,16 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.springframework.security.config.annotation.issue50;
+
+import javax.transaction.Transactional;
 
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -33,9 +37,8 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit4.SpringRunner;
 
-import javax.transaction.Transactional;
-
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 /**
  * @author Rob Winch
@@ -43,8 +46,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @Transactional
 @RunWith(SpringRunner.class)
-@ContextConfiguration(classes = {ApplicationConfig.class, SecurityConfig.class})
+@ContextConfiguration(classes = { ApplicationConfig.class, SecurityConfig.class })
 public class Issue50Tests {
+
 	@Autowired
 	private AuthenticationManager authenticationManager;
 
@@ -53,7 +57,8 @@ public class Issue50Tests {
 
 	@Before
 	public void setup() {
-		SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken("test", null, "ROLE_ADMIN"));
+		SecurityContextHolder.getContext()
+				.setAuthentication(new TestingAuthenticationToken("test", null, "ROLE_ADMIN"));
 	}
 
 	@After
@@ -67,30 +72,33 @@ public class Issue50Tests {
 		// no exception
 	}
 
-	@Test(expected = UsernameNotFoundException.class)
+	@Test
 	public void authenticateWhenMissingUserThenUsernameNotFoundException() {
-		this.authenticationManager.authenticate(new UsernamePasswordAuthenticationToken("test", "password"));
+		assertThatExceptionOfType(UsernameNotFoundException.class).isThrownBy(() -> this.authenticationManager
+				.authenticate(new UsernamePasswordAuthenticationToken("test", "password")));
 	}
 
-	@Test(expected = BadCredentialsException.class)
+	@Test
 	public void authenticateWhenInvalidPasswordThenBadCredentialsException() {
 		this.userRepo.save(User.withUsernameAndPassword("test", "password"));
-		this.authenticationManager.authenticate(new UsernamePasswordAuthenticationToken("test", "invalid"));
+		assertThatExceptionOfType(BadCredentialsException.class).isThrownBy(() -> this.authenticationManager
+				.authenticate(new UsernamePasswordAuthenticationToken("test", "invalid")));
 	}
 
 	@Test
 	public void authenticateWhenValidUserThenAuthenticates() {
 		this.userRepo.save(User.withUsernameAndPassword("test", "password"));
 		Authentication result = this.authenticationManager
-			.authenticate(new UsernamePasswordAuthenticationToken("test", "password"));
+				.authenticate(new UsernamePasswordAuthenticationToken("test", "password"));
 		assertThat(result.getName()).isEqualTo("test");
 	}
 
-	@Test(expected = AccessDeniedException.class)
+	@Test
 	public void globalMethodSecurityIsEnabledWhenNotAllowedThenAccessDenied() {
 		SecurityContextHolder.getContext().setAuthentication(new TestingAuthenticationToken("test", null, "ROLE_USER"));
 		this.userRepo.save(User.withUsernameAndPassword("denied", "password"));
-		Authentication result = this.authenticationManager
-			.authenticate(new UsernamePasswordAuthenticationToken("test", "password"));
+		assertThatExceptionOfType(AccessDeniedException.class).isThrownBy(() -> this.authenticationManager
+				.authenticate(new UsernamePasswordAuthenticationToken("test", "password")));
 	}
+
 }

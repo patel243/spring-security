@@ -1,23 +1,25 @@
 if (!project.hasProperty("reactorVersion")) {
-	ext.reactorVersion = "Dysprosium-SR+"
+	ext.reactorVersion = "2020.0.+"
 }
 
 if (!project.hasProperty("springVersion")) {
-	ext.springVersion = "latest.release"
+	ext.springVersion = "5.3.+"
 }
 
 if (!project.hasProperty("springDataVersion")) {
-	ext.springDataVersion = "Moore-SR+"
+	ext.springDataVersion = "Neumann-SR+"
 }
 if (!project.hasProperty("kotlinVersion")) {
 	ext.kotlinVersion = "1.+"
+}
+if (!project.hasProperty("rsocketVersion")) {
+	ext.rsocketVersion = "1.1.0"
 }
 if (!project.hasProperty("locksDisabled")) {
 	dependencyLocking {
 		lockAllConfigurations()
 	}
 }
-ext.rsocketVersion = "1.+"
 ext.openSamlVersion = "3.+"
 
 dependencies {
@@ -42,10 +44,10 @@ dependencies {
 		management "com.sun.xml.bind:jaxb-core:2.+"
 		management "com.sun.xml.bind:jaxb-impl:2.+"
 		management "com.unboundid:unboundid-ldapsdk:4.+"
-		management "commons-codec:commons-codec:1.+"
+		management "commons-codec:commons-codec:1.14"
 		management "commons-collections:commons-collections:3.+"
 		management "commons-httpclient:commons-httpclient:3.+"
-		management "commons-logging:commons-logging:1.+"
+		management "commons-logging:commons-logging:1.2"
 		management "io.projectreactor.tools:blockhound:1.+"
 		management "io.rsocket:rsocket-core:${rsocketVersion}"
 		management "io.rsocket:rsocket-transport-netty:${rsocketVersion}"
@@ -84,7 +86,7 @@ dependencies {
 		management "org.hsqldb:hsqldb:2.+"
 		management "org.jasig.cas.client:cas-client-core:3.+"
 		management "org.jasig.cas:cas-server-webapp:4.0.7@war"
-		management "org.mockito:mockito-core:3.+"
+		management "org.mockito:mockito-core:3.3.+"
 		management "org.openid4java:openid4java-nodeps:0.+"
 		management "org.opensaml:opensaml-core:$openSamlVersion"
 		management "org.opensaml:opensaml-saml-api:$openSamlVersion"

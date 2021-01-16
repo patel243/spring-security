@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.springframework.security.samples.config;
 
 import org.springframework.beans.factory.annotation.Autowired;
@@ -28,7 +29,8 @@ public class SecurityConfig {
 		auth
 			.ldapAuthentication()
 				.userDnPatterns("uid={0},ou=people")
-				.groupSearchBase("ou=groups");
+				.groupSearchBase("ou=groups")
+				.contextSource().port(0);
 	}
 	// @formatter:on
 }

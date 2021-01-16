@@ -16,14 +16,18 @@
 
 package org.springframework.security.authentication.rcp;
 
-import static org.assertj.core.api.Assertions.*;
-import static org.mockito.Mockito.*;
-
 import org.junit.Test;
+
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.security.core.Authentication;
+
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.mock;
 
 /**
  * Tests {@link RemoteAuthenticationManagerImpl}.
@@ -31,44 +35,32 @@ import org.springframework.security.core.Authentication;
  * @author Ben Alex
  */
 public class RemoteAuthenticationManagerImplTests {
-	// ~ Methods
-	// ========================================================================================================
 
-	@Test(expected = RemoteAuthenticationException.class)
+	@Test
 	public void testFailedAuthenticationReturnsRemoteAuthenticationException() {
 		RemoteAuthenticationManagerImpl manager = new RemoteAuthenticationManagerImpl();
 		AuthenticationManager am = mock(AuthenticationManager.class);
-		when(am.authenticate(any(Authentication.class))).thenThrow(
-				new BadCredentialsException(""));
+		given(am.authenticate(any(Authentication.class))).willThrow(new BadCredentialsException(""));
 		manager.setAuthenticationManager(am);
-
-		manager.attemptAuthentication("rod", "password");
+		assertThatExceptionOfType(RemoteAuthenticationException.class)
+				.isThrownBy(() -> manager.attemptAuthentication("rod", "password"));
 	}
 
 	@Test
 	public void testStartupChecksAuthenticationManagerSet() throws Exception {
 		RemoteAuthenticationManagerImpl manager = new RemoteAuthenticationManagerImpl();
-
-		try {
-			manager.afterPropertiesSet();
-			fail("Should have thrown IllegalArgumentException");
-		}
-		catch (IllegalArgumentException expected) {
-		}
-
+		assertThatIllegalArgumentException().isThrownBy(manager::afterPropertiesSet);
 		manager.setAuthenticationManager(mock(AuthenticationManager.class));
 		manager.afterPropertiesSet();
-
 	}
 
 	@Test
 	public void testSuccessfulAuthentication() {
 		RemoteAuthenticationManagerImpl manager = new RemoteAuthenticationManagerImpl();
 		AuthenticationManager am = mock(AuthenticationManager.class);
-		when(am.authenticate(any(Authentication.class))).thenReturn(
-				new TestingAuthenticationToken("u", "p", "A"));
+		given(am.authenticate(any(Authentication.class))).willReturn(new TestingAuthenticationToken("u", "p", "A"));
 		manager.setAuthenticationManager(am);
-
 		manager.attemptAuthentication("rod", "password");
 	}
+
 }

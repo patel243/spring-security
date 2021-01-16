@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package bigbank;
 
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -23,7 +24,7 @@ public interface BankService {
 
 	Account[] findAccounts();
 
-	@PreAuthorize("hasRole('supervisor') or "
-			+ "hasRole('teller') and (#account.balance + #amount >= -#account.overdraft)")
+	@PreAuthorize("hasAuthority('supervisor') or "
+			+ "hasAuthority('teller') and (#account.balance + #amount >= -#account.overdraft)")
 	Account post(Account account, double amount);
 }

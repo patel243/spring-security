@@ -28,6 +28,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.server.ServerWebExchange;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.mockito.Mockito.verifyZeroInteractions;
 
 /**
@@ -36,31 +37,31 @@ import static org.mockito.Mockito.verifyZeroInteractions;
  */
 @RunWith(MockitoJUnitRunner.class)
 public class HttpStatusServerAccessDeniedHandlerTests {
+
 	@Mock
 	private ServerWebExchange exchange;
+
 	private HttpStatus httpStatus = HttpStatus.FORBIDDEN;
+
 	private HttpStatusServerAccessDeniedHandler handler = new HttpStatusServerAccessDeniedHandler(this.httpStatus);
 
 	private AccessDeniedException exception = new AccessDeniedException("Forbidden");
 
-	@Test(expected = IllegalArgumentException.class)
+	@Test
 	public void constructorHttpStatusWhenNullThenException() {
-		new HttpStatusServerAccessDeniedHandler(null);
+		assertThatIllegalArgumentException().isThrownBy(() -> new HttpStatusServerAccessDeniedHandler(null));
 	}
 
 	@Test
 	public void commenceWhenNoSubscribersThenNoActions() {
 		this.handler.handle(this.exchange, this.exception);
-
 		verifyZeroInteractions(this.exchange);
 	}
 
 	@Test
 	public void commenceWhenSubscribeThenStatusSet() {
 		this.exchange = MockServerWebExchange.from(MockServerHttpRequest.get("/").build());
-
 		this.handler.handle(this.exchange, this.exception).block();
-
 		assertThat(this.exchange.getResponse().getStatusCode()).isEqualTo(this.httpStatus);
 	}
 
@@ -69,9 +70,8 @@ public class HttpStatusServerAccessDeniedHandlerTests {
 		this.httpStatus = HttpStatus.NOT_FOUND;
 		this.handler = new HttpStatusServerAccessDeniedHandler(this.httpStatus);
 		this.exchange = MockServerWebExchange.from(MockServerHttpRequest.get("/").build());
-
 		this.handler.handle(this.exchange, this.exception).block();
-
 		assertThat(this.exchange.getResponse().getStatusCode()).isEqualTo(this.httpStatus);
 	}
+
 }

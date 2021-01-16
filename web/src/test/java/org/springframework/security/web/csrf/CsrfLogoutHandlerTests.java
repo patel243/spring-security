@@ -13,18 +13,21 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.springframework.security.web.csrf;
 
-import static org.mockito.Mockito.verify;
+package org.springframework.security.web.csrf;
 
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
+
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.authentication.TestingAuthenticationToken;
+
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.mockito.Mockito.verify;
 
 /**
  * @author Rob Winch
@@ -32,6 +35,7 @@ import org.springframework.security.authentication.TestingAuthenticationToken;
  */
 @RunWith(MockitoJUnitRunner.class)
 public class CsrfLogoutHandlerTests {
+
 	@Mock
 	private CsrfTokenRepository csrfTokenRepository;
 
@@ -43,22 +47,21 @@ public class CsrfLogoutHandlerTests {
 
 	@Before
 	public void setup() {
-		request = new MockHttpServletRequest();
-		response = new MockHttpServletResponse();
-		handler = new CsrfLogoutHandler(csrfTokenRepository);
+		this.request = new MockHttpServletRequest();
+		this.response = new MockHttpServletResponse();
+		this.handler = new CsrfLogoutHandler(this.csrfTokenRepository);
 	}
 
-	@Test(expected = IllegalArgumentException.class)
+	@Test
 	public void constructorNullCsrfTokenRepository() {
-		new CsrfLogoutHandler(null);
+		assertThatIllegalArgumentException().isThrownBy(() -> new CsrfLogoutHandler(null));
 	}
 
 	@Test
 	public void logoutRemovesCsrfToken() {
-		handler.logout(request, response, new TestingAuthenticationToken("user",
-				"password", "ROLE_USER"));
-
-		verify(csrfTokenRepository).saveToken(null, request, response);
+		this.handler.logout(this.request, this.response,
+				new TestingAuthenticationToken("user", "password", "ROLE_USER"));
+		verify(this.csrfTokenRepository).saveToken(null, this.request, this.response);
 	}
 
 }

@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.springframework.security.test.web.servlet.response;
 
 import org.junit.Before;
@@ -39,6 +40,7 @@ import org.springframework.web.context.WebApplicationContext;
 import org.springframework.web.servlet.config.annotation.EnableWebMvc;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestBuilders.formLogin;
 import static org.springframework.security.test.web.servlet.response.SecurityMockMvcResultMatchers.authenticated;
 import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
@@ -47,6 +49,7 @@ import static org.springframework.security.test.web.servlet.setup.SecurityMockMv
 @ContextConfiguration(classes = SecurityMockMvcResultMatchersTests.Config.class)
 @WebAppConfiguration
 public class SecurityMockMvcResultMatchersTests {
+
 	@Autowired
 	private WebApplicationContext context;
 
@@ -64,16 +67,14 @@ public class SecurityMockMvcResultMatchersTests {
 
 	@Test
 	public void withAuthenticationWhenMatchesThenSuccess() throws Exception {
-		this.mockMvc.perform(formLogin())
-			.andExpect(authenticated().withAuthentication(auth ->
-				assertThat(auth).isInstanceOf(UsernamePasswordAuthenticationToken.class)));
+		this.mockMvc.perform(formLogin()).andExpect(authenticated().withAuthentication(
+				(auth) -> assertThat(auth).isInstanceOf(UsernamePasswordAuthenticationToken.class)));
 	}
 
-	@Test(expected = AssertionError.class)
+	@Test
 	public void withAuthenticationWhenNotMatchesThenFails() throws Exception {
-		this.mockMvc
-			.perform(formLogin())
-			.andExpect(authenticated().withAuthentication(auth -> assertThat(auth.getName()).isEqualTo("notmatch")));
+		assertThatExceptionOfType(AssertionError.class).isThrownBy(() -> this.mockMvc.perform(formLogin()).andExpect(
+				authenticated().withAuthentication((auth) -> assertThat(auth.getName()).isEqualTo("notmatch"))));
 	}
 
 	// SEC-2719
@@ -87,33 +88,40 @@ public class SecurityMockMvcResultMatchersTests {
 		// @formatter:on
 	}
 
-	@Test(expected = AssertionError.class)
+	@Test
 	public void withRolesFailsIfNotAllRoles() throws Exception {
+		assertThatExceptionOfType(AssertionError.class).isThrownBy(() ->
 		// @formatter:off
-		this.mockMvc
-			.perform(formLogin())
-			.andExpect(authenticated().withRoles("USER"));
+			this.mockMvc
+				.perform(formLogin())
+				.andExpect(authenticated().withRoles("USER"))
 		// @formatter:on
+		);
 	}
 
 	@EnableWebSecurity
 	@EnableWebMvc
 	static class Config extends WebSecurityConfigurerAdapter {
 
-		// @formatter:off
+		@Override
 		@Bean
 		public UserDetailsService userDetailsService() {
+			// @formatter:off
 			UserDetails user = User.withDefaultPasswordEncoder().username("user").password("password").roles("USER", "SELLER").build();
+			// @formatter:on
 			return new InMemoryUserDetailsManager(user);
 		}
-		// @formatter:on
 
 		@RestController
 		static class Controller {
+
 			@RequestMapping("/")
-			public String ok() {
+			String ok() {
 				return "ok";
 			}
+
 		}
+
 	}
+
 }

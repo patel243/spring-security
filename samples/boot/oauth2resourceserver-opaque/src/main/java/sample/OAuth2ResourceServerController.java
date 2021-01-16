@@ -13,10 +13,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package sample;
 
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.oauth2.core.OAuth2AuthenticatedPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -29,8 +29,8 @@ import org.springframework.web.bind.annotation.RestController;
 public class OAuth2ResourceServerController {
 
 	@GetMapping("/")
-	public String index(@AuthenticationPrincipal OAuth2AuthenticatedPrincipal principal) {
-		return String.format("Hello, %s!", (String) principal.getAttribute("sub"));
+	public String index(@AuthenticationPrincipal(expression="subject") String subject) {
+		return String.format("Hello, %s!", subject);
 	}
 
 	@GetMapping("/message")

@@ -24,7 +24,8 @@ import org.junit.Test;
 import reactor.test.StepVerifier;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 
 /**
  * @author Rob Winch
@@ -43,42 +44,44 @@ public class InMemoryReactiveClientRegistrationRepositoryTests {
 
 	@Test
 	public void constructorWhenZeroVarArgsThenIllegalArgumentException() {
-		assertThatThrownBy(() -> new InMemoryReactiveClientRegistrationRepository())
-			.isInstanceOf(IllegalArgumentException.class);
+		assertThatIllegalArgumentException().isThrownBy(() -> new InMemoryReactiveClientRegistrationRepository());
 	}
 
 	@Test
 	public void constructorWhenClientRegistrationArrayThenIllegalArgumentException() {
 		ClientRegistration[] registrations = null;
-		assertThatThrownBy(() -> new InMemoryReactiveClientRegistrationRepository(registrations))
-				.isInstanceOf(IllegalArgumentException.class);
+		assertThatIllegalArgumentException()
+				.isThrownBy(() -> new InMemoryReactiveClientRegistrationRepository(registrations));
 	}
 
 	@Test
 	public void constructorWhenClientRegistrationListThenIllegalArgumentException() {
 		List<ClientRegistration> registrations = null;
-		assertThatThrownBy(() -> new InMemoryReactiveClientRegistrationRepository(registrations))
-				.isInstanceOf(IllegalArgumentException.class);
+		assertThatIllegalArgumentException()
+				.isThrownBy(() -> new InMemoryReactiveClientRegistrationRepository(registrations));
 	}
 
-	@Test(expected = IllegalStateException.class)
+	@Test
 	public void constructorListClientRegistrationWhenDuplicateIdThenIllegalArgumentException() {
 		List<ClientRegistration> registrations = Arrays.asList(this.registration, this.registration);
-		new InMemoryReactiveClientRegistrationRepository(registrations);
+		assertThatIllegalStateException()
+				.isThrownBy(() -> new InMemoryReactiveClientRegistrationRepository(registrations));
 	}
 
 	@Test
 	public void constructorWhenClientRegistrationIsNullThenIllegalArgumentException() {
 		ClientRegistration registration = null;
-		assertThatThrownBy(() -> new InMemoryReactiveClientRegistrationRepository(registration))
-				.isInstanceOf(IllegalArgumentException.class);
+		assertThatIllegalArgumentException()
+				.isThrownBy(() -> new InMemoryReactiveClientRegistrationRepository(registration));
 	}
 
 	@Test
 	public void findByRegistrationIdWhenValidIdThenFound() {
+		// @formatter:off
 		StepVerifier.create(this.repository.findByRegistrationId(this.registration.getRegistrationId()))
 				.expectNext(this.registration)
 				.verifyComplete();
+		// @formatter:on
 	}
 
 	@Test
@@ -91,4 +94,5 @@ public class InMemoryReactiveClientRegistrationRepositoryTests {
 	public void iteratorWhenContainsGithubThenContains() {
 		assertThat(this.repository).containsOnly(this.registration);
 	}
+
 }

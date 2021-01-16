@@ -31,9 +31,6 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-import org.springframework.security.core.authority.mapping.GrantedAuthoritiesMapper;
-import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
-import org.springframework.security.oauth2.core.OAuth2AuthorizationException;
 import reactor.core.publisher.Mono;
 import reactor.util.context.Context;
 
@@ -58,6 +55,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.AuthorityUtils;
+import org.springframework.security.core.authority.mapping.GrantedAuthoritiesMapper;
 import org.springframework.security.core.userdetails.ReactiveUserDetailsService;
 import org.springframework.security.oauth2.client.InMemoryReactiveOAuth2AuthorizedClientService;
 import org.springframework.security.oauth2.client.ReactiveOAuth2AuthorizedClientService;
@@ -83,6 +81,8 @@ import org.springframework.security.oauth2.client.web.server.ServerOAuth2Authori
 import org.springframework.security.oauth2.client.web.server.ServerOAuth2AuthorizedClientRepository;
 import org.springframework.security.oauth2.client.web.server.WebSessionOAuth2ServerAuthorizationRequestRepository;
 import org.springframework.security.oauth2.client.web.server.authentication.OAuth2LoginAuthenticationWebFilter;
+import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
+import org.springframework.security.oauth2.core.OAuth2AuthorizationException;
 import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest;
 import org.springframework.security.oauth2.core.oidc.user.OidcUser;
 import org.springframework.security.oauth2.core.user.OAuth2User;
@@ -103,11 +103,13 @@ import org.springframework.security.web.PortMapper;
 import org.springframework.security.web.authentication.preauth.x509.SubjectDnX509PrincipalExtractor;
 import org.springframework.security.web.authentication.preauth.x509.X509PrincipalExtractor;
 import org.springframework.security.web.server.DelegatingServerAuthenticationEntryPoint;
+import org.springframework.security.web.server.DelegatingServerAuthenticationEntryPoint.DelegateEntry;
 import org.springframework.security.web.server.MatcherSecurityWebFilterChain;
 import org.springframework.security.web.server.SecurityWebFilterChain;
 import org.springframework.security.web.server.ServerAuthenticationEntryPoint;
 import org.springframework.security.web.server.WebFilterExchange;
 import org.springframework.security.web.server.authentication.AnonymousAuthenticationWebFilter;
+import org.springframework.security.web.server.authentication.AuthenticationConverterServerWebExchangeMatcher;
 import org.springframework.security.web.server.authentication.AuthenticationWebFilter;
 import org.springframework.security.web.server.authentication.HttpBasicServerAuthenticationEntryPoint;
 import org.springframework.security.web.server.authentication.ReactivePreAuthenticatedAuthenticationManager;
@@ -147,6 +149,7 @@ import org.springframework.security.web.server.header.ContentSecurityPolicyServe
 import org.springframework.security.web.server.header.ContentTypeOptionsServerHttpHeadersWriter;
 import org.springframework.security.web.server.header.FeaturePolicyServerHttpHeadersWriter;
 import org.springframework.security.web.server.header.HttpHeaderWriterWebFilter;
+import org.springframework.security.web.server.header.PermissionsPolicyServerHttpHeadersWriter;
 import org.springframework.security.web.server.header.ReferrerPolicyServerHttpHeadersWriter;
 import org.springframework.security.web.server.header.ReferrerPolicyServerHttpHeadersWriter.ReferrerPolicy;
 import org.springframework.security.web.server.header.ServerHttpHeadersWriter;
@@ -178,15 +181,11 @@ import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.server.WebFilter;
 import org.springframework.web.server.WebFilterChain;
 
-import static org.springframework.security.web.server.DelegatingServerAuthenticationEntryPoint.DelegateEntry;
-import static org.springframework.security.web.server.util.matcher.ServerWebExchangeMatcher.MatchResult.match;
-import static org.springframework.security.web.server.util.matcher.ServerWebExchangeMatcher.MatchResult.notMatch;
-
 /**
- * A {@link ServerHttpSecurity} is similar to Spring Security's {@code HttpSecurity} but for WebFlux.
- * It allows configuring web based security for specific http requests. By default it will be applied
- * to all requests, but can be restricted using {@link #securityMatcher(ServerWebExchangeMatcher)} or
- * other similar methods.
+ * A {@link ServerHttpSecurity} is similar to Spring Security's {@code HttpSecurity} but
+ * for WebFlux. It allows configuring web based security for specific http requests. By
+ * default it will be applied to all requests, but can be restricted using
+ * {@link #securityMatcher(ServerWebExchangeMatcher)} or other similar methods.
  *
  * A minimal configuration can be found below:
  *
@@ -196,14 +195,15 @@ import static org.springframework.security.web.server.util.matcher.ServerWebExch
  *
  *     &#064;Bean
  *     public MapReactiveUserDetailsService userDetailsService() {
- *          UserDetails user = User.withDefaultPasswordEncoder()
- *               .username("user")
- *               .password("password")
- *               .roles("USER")
- *               .build();
- *          return new MapReactiveUserDetailsService(user);
+ *         UserDetails user = User.withDefaultPasswordEncoder()
+ *             .username("user")
+ *             .password("password")
+ *             .roles("USER")
+ *             .build();
+ *         return new MapReactiveUserDetailsService(user);
  *     }
  * }
+ * </pre>
  *
  * Below is the same as our minimal configuration, but explicitly declaring the
  * {@code ServerHttpSecurity}.
@@ -211,27 +211,29 @@ import static org.springframework.security.web.server.util.matcher.ServerWebExch
  * <pre class="code">
  * &#064;EnableWebFluxSecurity
  * public class MyExplicitSecurityConfiguration {
+ *
  *     &#064;Bean
  *     public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
- *          http
- *               .authorizeExchange()
- *                    .anyExchange().authenticated()
- *                         .and()
- *                    .httpBasic().and()
- *                    .formLogin();
- *          return http.build();
+ *         http
+ *             .authorizeExchange()
+ *               .anyExchange().authenticated()
+ *             .and()
+ *               .httpBasic().and()
+ *               .formLogin();
+ *             return http.build();
  *     }
  *
  *     &#064;Bean
  *     public MapReactiveUserDetailsService userDetailsService() {
- *          UserDetails user = User.withDefaultPasswordEncoder()
- *               .username("user")
- *               .password("password")
- *               .roles("USER")
- *               .build();
- *          return new MapReactiveUserDetailsService(user);
+ *         UserDetails user = User.withDefaultPasswordEncoder()
+ *             .username("user")
+ *             .password("password")
+ *             .roles("USER")
+ *             .build();
+ *         return new MapReactiveUserDetailsService(user);
  *     }
  * }
+ * </pre>
  *
  * @author Rob Winch
  * @author Vedran Pavic
@@ -242,6 +244,7 @@ import static org.springframework.security.web.server.util.matcher.ServerWebExch
  * @since 5.0
  */
 public class ServerHttpSecurity {
+
 	private ServerWebExchangeMatcher securityMatcher = ServerWebExchangeMatchers.anyExchange();
 
 	private AuthorizeExchangeSpec authorizeExchange;
@@ -284,8 +287,7 @@ public class ServerHttpSecurity {
 
 	private ServerAccessDeniedHandler accessDeniedHandler;
 
-	private List<ServerWebExchangeDelegatingServerAccessDeniedHandler.DelegateEntry>
-			defaultAccessDeniedHandlers = new ArrayList<>();
+	private List<ServerWebExchangeDelegatingServerAccessDeniedHandler.DelegateEntry> defaultAccessDeniedHandlers = new ArrayList<>();
 
 	private List<WebFilter> webFilters = new ArrayList<>();
 
@@ -295,11 +297,14 @@ public class ServerHttpSecurity {
 
 	private AnonymousSpec anonymous;
 
+	protected ServerHttpSecurity() {
+	}
+
 	/**
-	 * The ServerExchangeMatcher that determines which requests apply to this HttpSecurity instance.
-	 *
-	 * @param matcher the ServerExchangeMatcher that determines which requests apply to this HttpSecurity instance.
-	 *                Default is all requests.
+	 * The ServerExchangeMatcher that determines which requests apply to this HttpSecurity
+	 * instance.
+	 * @param matcher the ServerExchangeMatcher that determines which requests apply to
+	 * this HttpSecurity instance. Default is all requests.
 	 * @return the {@link ServerHttpSecurity} to continue configuring
 	 */
 	public ServerHttpSecurity securityMatcher(ServerWebExchangeMatcher matcher) {
@@ -346,16 +351,19 @@ public class ServerHttpSecurity {
 	}
 
 	/**
-	 * Gets the ServerExchangeMatcher that determines which requests apply to this HttpSecurity instance.
-	 * @return the ServerExchangeMatcher that determines which requests apply to this HttpSecurity instance.
+	 * Gets the ServerExchangeMatcher that determines which requests apply to this
+	 * HttpSecurity instance.
+	 * @return the ServerExchangeMatcher that determines which requests apply to this
+	 * HttpSecurity instance.
 	 */
 	private ServerWebExchangeMatcher getSecurityMatcher() {
 		return this.securityMatcher;
 	}
 
 	/**
-	 * The strategy used with {@code ReactorContextWebFilter}. It does impact how the {@code SecurityContext} is
-	 * saved which is configured on a per {@link AuthenticationWebFilter} basis.
+	 * The strategy used with {@code ReactorContextWebFilter}. It does impact how the
+	 * {@code SecurityContext} is saved which is configured on a per
+	 * {@link AuthenticationWebFilter} basis.
 	 * @param securityContextRepository the repository to use
 	 * @return the {@link ServerHttpSecurity} to continue configuring
 	 */
@@ -380,7 +388,8 @@ public class ServerHttpSecurity {
 	 *
 	 * Then all non-HTTPS requests will be redirected to HTTPS.
 	 *
-	 * Typically, all requests should be HTTPS; however, the focus for redirection can also be narrowed:
+	 * Typically, all requests should be HTTPS; however, the focus for redirection can
+	 * also be narrowed:
 	 *
 	 * <pre class="code">
 	 *  &#064;Bean
@@ -388,12 +397,11 @@ public class ServerHttpSecurity {
 	 * 	    http
 	 * 	        // ...
 	 * 	        .redirectToHttps()
-	 * 	            .httpsRedirectWhen(serverWebExchange ->
+	 * 	            .httpsRedirectWhen((serverWebExchange) ->
 	 * 	            	serverWebExchange.getRequest().getHeaders().containsKey("X-Requires-Https"))
 	 * 	    return http.build();
 	 * 	}
 	 * </pre>
-	 *
 	 * @return the {@link HttpsRedirectSpec} to customize
 	 */
 	public HttpsRedirectSpec redirectToHttps() {
@@ -416,35 +424,36 @@ public class ServerHttpSecurity {
 	 *
 	 * Then all non-HTTPS requests will be redirected to HTTPS.
 	 *
-	 * Typically, all requests should be HTTPS; however, the focus for redirection can also be narrowed:
+	 * Typically, all requests should be HTTPS; however, the focus for redirection can
+	 * also be narrowed:
 	 *
 	 * <pre class="code">
 	 *  &#064;Bean
 	 * 	public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
 	 * 	    http
 	 * 	        // ...
-	 * 	        .redirectToHttps(redirectToHttps ->
+	 * 	        .redirectToHttps((redirectToHttps) ->
 	 * 	        	redirectToHttps
-	 * 	            	.httpsRedirectWhen(serverWebExchange ->
+	 * 	            	.httpsRedirectWhen((serverWebExchange) ->
 	 * 	            		serverWebExchange.getRequest().getHeaders().containsKey("X-Requires-Https"))
 	 * 	            );
 	 * 	    return http.build();
 	 * 	}
 	 * </pre>
-	 *
 	 * @param httpsRedirectCustomizer the {@link Customizer} to provide more options for
 	 * the {@link HttpsRedirectSpec}
 	 * @return the {@link ServerHttpSecurity} to customize
 	 */
-	public ServerHttpSecurity redirectToHttps(Customizer<HttpsRedirectSpec> httpsRedirectCustomizer)  {
+	public ServerHttpSecurity redirectToHttps(Customizer<HttpsRedirectSpec> httpsRedirectCustomizer) {
 		this.httpsRedirectSpec = new HttpsRedirectSpec();
 		httpsRedirectCustomizer.customize(this.httpsRedirectSpec);
 		return this;
 	}
 
 	/**
-	 * Configures <a href="https://www.owasp.org/index.php/Cross-Site_Request_Forgery_(CSRF)_Prevention_Cheat_Sheet">CSRF Protection</a>
-	 * which is enabled by default. You can disable it using:
+	 * Configures <a href=
+	 * "https://www.owasp.org/index.php/Cross-Site_Request_Forgery_(CSRF)_Prevention_Cheat_Sheet">CSRF
+	 * Protection</a> which is enabled by default. You can disable it using:
 	 *
 	 * <pre class="code">
 	 *  &#064;Bean
@@ -474,7 +483,6 @@ public class ServerHttpSecurity {
 	 *      return http.build();
 	 *  }
 	 * </pre>
-	 *
 	 * @return the {@link CsrfSpec} to customize
 	 */
 	public CsrfSpec csrf() {
@@ -485,15 +493,16 @@ public class ServerHttpSecurity {
 	}
 
 	/**
-	 * Configures <a href="https://www.owasp.org/index.php/Cross-Site_Request_Forgery_(CSRF)_Prevention_Cheat_Sheet">CSRF Protection</a>
-	 * which is enabled by default. You can disable it using:
+	 * Configures <a href=
+	 * "https://www.owasp.org/index.php/Cross-Site_Request_Forgery_(CSRF)_Prevention_Cheat_Sheet">CSRF
+	 * Protection</a> which is enabled by default. You can disable it using:
 	 *
 	 * <pre class="code">
 	 *  &#064;Bean
 	 *  public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
 	 *      http
 	 *          // ...
-	 *          .csrf(csrf ->
+	 *          .csrf((csrf) ->
 	 *              csrf.disabled()
 	 *          );
 	 *      return http.build();
@@ -508,7 +517,7 @@ public class ServerHttpSecurity {
 	 *  public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
 	 *      http
 	 *          // ...
-	 *          .csrf(csrf ->
+	 *          .csrf((csrf) ->
 	 *              csrf
 	 *                  // Handle CSRF failures
 	 *                  .accessDeniedHandler(accessDeniedHandler)
@@ -520,9 +529,8 @@ public class ServerHttpSecurity {
 	 *      return http.build();
 	 *  }
 	 * </pre>
-	 *
-	 * @param csrfCustomizer the {@link Customizer} to provide more options for
-	 * the {@link CsrfSpec}
+	 * @param csrfCustomizer the {@link Customizer} to provide more options for the
+	 * {@link CsrfSpec}
 	 * @return the {@link ServerHttpSecurity} to customize
 	 */
 	public ServerHttpSecurity csrf(Customizer<CsrfSpec> csrfCustomizer) {
@@ -534,9 +542,11 @@ public class ServerHttpSecurity {
 	}
 
 	/**
-	 * Configures CORS headers. By default if a {@link CorsConfigurationSource} Bean is found, it will be used
-	 * to create a {@link CorsWebFilter}. If {@link CorsSpec#configurationSource(CorsConfigurationSource)} is invoked
-	 * it will be used instead. If neither has been configured, the Cors configuration will do nothing.
+	 * Configures CORS headers. By default if a {@link CorsConfigurationSource} Bean is
+	 * found, it will be used to create a {@link CorsWebFilter}. If
+	 * {@link CorsSpec#configurationSource(CorsConfigurationSource)} is invoked it will be
+	 * used instead. If neither has been configured, the Cors configuration will do
+	 * nothing.
 	 * @return the {@link CorsSpec} to customize
 	 */
 	public CorsSpec cors() {
@@ -547,12 +557,13 @@ public class ServerHttpSecurity {
 	}
 
 	/**
-	 * Configures CORS headers. By default if a {@link CorsConfigurationSource} Bean is found, it will be used
-	 * to create a {@link CorsWebFilter}. If {@link CorsSpec#configurationSource(CorsConfigurationSource)} is invoked
-	 * it will be used instead. If neither has been configured, the Cors configuration will do nothing.
-	 *
-	 * @param corsCustomizer the {@link Customizer} to provide more options for
-	 * the {@link CorsSpec}
+	 * Configures CORS headers. By default if a {@link CorsConfigurationSource} Bean is
+	 * found, it will be used to create a {@link CorsWebFilter}. If
+	 * {@link CorsSpec#configurationSource(CorsConfigurationSource)} is invoked it will be
+	 * used instead. If neither has been configured, the Cors configuration will do
+	 * nothing.
+	 * @param corsCustomizer the {@link Customizer} to provide more options for the
+	 * {@link CorsSpec}
 	 * @return the {@link ServerHttpSecurity} to customize
 	 */
 	public ServerHttpSecurity cors(Customizer<CorsSpec> corsCustomizer) {
@@ -564,7 +575,8 @@ public class ServerHttpSecurity {
 	}
 
 	/**
-	 * Enables and Configures anonymous authentication. Anonymous Authentication is disabled by default.
+	 * Enables and Configures anonymous authentication. Anonymous Authentication is
+	 * disabled by default.
 	 *
 	 * <pre class="code">
 	 *  &#064;Bean
@@ -580,7 +592,7 @@ public class ServerHttpSecurity {
 	 * @since 5.2.0
 	 * @author Ankur Pathak
 	 */
-	public AnonymousSpec anonymous(){
+	public AnonymousSpec anonymous() {
 		if (this.anonymous == null) {
 			this.anonymous = new AnonymousSpec();
 		}
@@ -588,14 +600,15 @@ public class ServerHttpSecurity {
 	}
 
 	/**
-	 * Enables and Configures anonymous authentication. Anonymous Authentication is disabled by default.
+	 * Enables and Configures anonymous authentication. Anonymous Authentication is
+	 * disabled by default.
 	 *
 	 * <pre class="code">
 	 *  &#064;Bean
 	 *  public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
 	 *      http
 	 *          // ...
-	 *          .anonymous(anonymous ->
+	 *          .anonymous((anonymous) ->
 	 *              anonymous
 	 *                  .key("key")
 	 *                  .authorities("ROLE_ANONYMOUS")
@@ -603,9 +616,8 @@ public class ServerHttpSecurity {
 	 *      return http.build();
 	 *  }
 	 * </pre>
-	 *
-	 * @param anonymousCustomizer the {@link Customizer} to provide more options for
-	 * the {@link AnonymousSpec}
+	 * @param anonymousCustomizer the {@link Customizer} to provide more options for the
+	 * {@link AnonymousSpec}
 	 * @return the {@link ServerHttpSecurity} to customize
 	 */
 	public ServerHttpSecurity anonymous(Customizer<AnonymousSpec> anonymousCustomizer) {
@@ -614,67 +626,6 @@ public class ServerHttpSecurity {
 		}
 		anonymousCustomizer.customize(this.anonymous);
 		return this;
-	}
-
-	/**
-	 * Configures CORS support within Spring Security. This ensures that the {@link CorsWebFilter} is place in the
-	 * correct order.
-	 */
-	public class CorsSpec {
-		private CorsWebFilter corsFilter;
-
-		/**
-		 * Configures the {@link CorsConfigurationSource} to be used
-		 * @param source the source to use
-		 * @return the {@link CorsSpec} for additional configuration
-		 */
-		public CorsSpec configurationSource(CorsConfigurationSource source) {
-			this.corsFilter = new CorsWebFilter(source);
-			return this;
-		}
-
-		/**
-		 * Disables CORS support within Spring Security.
-		 * @return the {@link ServerHttpSecurity} to continue configuring
-		 */
-		public ServerHttpSecurity disable() {
-			ServerHttpSecurity.this.cors = null;
-			return ServerHttpSecurity.this;
-		}
-
-		/**
-		 * Allows method chaining to continue configuring the {@link ServerHttpSecurity}
-		 * @return the {@link ServerHttpSecurity} to continue configuring
-		 */
-		public ServerHttpSecurity and() {
-			return ServerHttpSecurity.this;
-		}
-
-		protected void configure(ServerHttpSecurity http) {
-			CorsWebFilter corsFilter = getCorsFilter();
-			if (corsFilter != null) {
-				http.addFilterAt(this.corsFilter, SecurityWebFiltersOrder.CORS);
-			}
-		}
-
-		private CorsWebFilter getCorsFilter() {
-			if (this.corsFilter != null) {
-				return this.corsFilter;
-			}
-
-			CorsConfigurationSource source = getBeanOrNull(CorsConfigurationSource.class);
-			if (source == null) {
-				return null;
-			}
-			CorsProcessor processor = getBeanOrNull(CorsProcessor.class);
-			if (processor == null) {
-				processor = new DefaultCorsProcessor();
-			}
-			this.corsFilter = new CorsWebFilter(source, processor);
-			return this.corsFilter;
-		}
-
-		private CorsSpec() {}
 	}
 
 	/**
@@ -693,7 +644,6 @@ public class ServerHttpSecurity {
 	 *      return http.build();
 	 *  }
 	 * </pre>
-	 *
 	 * @return the {@link HttpBasicSpec} to customize
 	 */
 	public HttpBasicSpec httpBasic() {
@@ -711,7 +661,7 @@ public class ServerHttpSecurity {
 	 *  public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
 	 *      http
 	 *          // ...
-	 *          .httpBasic(httpBasic ->
+	 *          .httpBasic((httpBasic) ->
 	 *              httpBasic
 	 *                  // used for authenticating the credentials
 	 *                  .authenticationManager(authenticationManager)
@@ -721,9 +671,8 @@ public class ServerHttpSecurity {
 	 *      return http.build();
 	 *  }
 	 * </pre>
-	 *
-	 * @param httpBasicCustomizer the {@link Customizer} to provide more options for
-	 * the {@link HttpBasicSpec}
+	 * @param httpBasicCustomizer the {@link Customizer} to provide more options for the
+	 * {@link HttpBasicSpec}
 	 * @return the {@link ServerHttpSecurity} to customize
 	 */
 	public ServerHttpSecurity httpBasic(Customizer<HttpBasicSpec> httpBasicCustomizer) {
@@ -754,7 +703,6 @@ public class ServerHttpSecurity {
 	 *      return http.build();
 	 *  }
 	 * </pre>
-	 *
 	 * @return the {@link FormLoginSpec} to customize
 	 */
 	public FormLoginSpec formLogin() {
@@ -772,7 +720,7 @@ public class ServerHttpSecurity {
 	 *  public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
 	 *      http
 	 *          // ...
-	 *          .formLogin(formLogin ->
+	 *          .formLogin((formLogin) ->
 	 *              formLogin
 	 *              	// used for authenticating the credentials
 	 *              	.authenticationManager(authenticationManager)
@@ -786,9 +734,8 @@ public class ServerHttpSecurity {
 	 *      return http.build();
 	 *  }
 	 * </pre>
-	 *
-	 * @param formLoginCustomizer the {@link Customizer} to provide more options for
-	 * the {@link FormLoginSpec}
+	 * @param formLoginCustomizer the {@link Customizer} to provide more options for the
+	 * {@link FormLoginSpec}
 	 * @return the {@link ServerHttpSecurity} to customize
 	 */
 	public ServerHttpSecurity formLogin(Customizer<FormLoginSpec> formLoginCustomizer) {
@@ -813,9 +760,9 @@ public class ServerHttpSecurity {
 	 *  }
 	 * </pre>
 	 *
-	 * Note that if extractor is not specified, {@link SubjectDnX509PrincipalExtractor} will be used.
-	 * If authenticationManager is not specified, {@link ReactivePreAuthenticatedAuthenticationManager} will be used.
-	 *
+	 * Note that if extractor is not specified, {@link SubjectDnX509PrincipalExtractor}
+	 * will be used. If authenticationManager is not specified,
+	 * {@link ReactivePreAuthenticatedAuthenticationManager} will be used.
 	 * @return the {@link X509Spec} to customize
 	 * @author Alexey Nesterov
 	 * @since 5.2
@@ -835,7 +782,7 @@ public class ServerHttpSecurity {
 	 *  &#064;Bean
 	 *  public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
 	 *      http
-	 *          .x509(x509 ->
+	 *          .x509((x509) ->
 	 *              x509
 	 *          	    .authenticationManager(authenticationManager)
 	 *                  .principalExtractor(principalExtractor)
@@ -844,13 +791,13 @@ public class ServerHttpSecurity {
 	 *  }
 	 * </pre>
 	 *
-	 * Note that if extractor is not specified, {@link SubjectDnX509PrincipalExtractor} will be used.
-	 * If authenticationManager is not specified, {@link ReactivePreAuthenticatedAuthenticationManager} will be used.
-	 *
-	 * @since 5.2
-	 * @param x509Customizer the {@link Customizer} to provide more options for
-	 * the {@link X509Spec}
+	 * Note that if extractor is not specified, {@link SubjectDnX509PrincipalExtractor}
+	 * will be used. If authenticationManager is not specified,
+	 * {@link ReactivePreAuthenticatedAuthenticationManager} will be used.
+	 * @param x509Customizer the {@link Customizer} to provide more options for the
+	 * {@link X509Spec}
 	 * @return the {@link ServerHttpSecurity} to customize
+	 * @since 5.2
 	 */
 	public ServerHttpSecurity x509(Customizer<X509Spec> x509Customizer) {
 		if (this.x509 == null) {
@@ -861,65 +808,8 @@ public class ServerHttpSecurity {
 	}
 
 	/**
-	 * Configures X509 authentication
-	 *
-	 * @author Alexey Nesterov
-	 * @since 5.2
-	 * @see #x509()
-	 */
-	public class X509Spec {
-
-		private X509PrincipalExtractor principalExtractor;
-		private ReactiveAuthenticationManager authenticationManager;
-
-		public X509Spec principalExtractor(X509PrincipalExtractor principalExtractor) {
-			this.principalExtractor = principalExtractor;
-			return this;
-		}
-
-		public X509Spec authenticationManager(ReactiveAuthenticationManager authenticationManager) {
-			this.authenticationManager = authenticationManager;
-			return this;
-		}
-
-		public ServerHttpSecurity and() {
-			return ServerHttpSecurity.this;
-		}
-
-		protected void configure(ServerHttpSecurity http) {
-			ReactiveAuthenticationManager authenticationManager = getAuthenticationManager();
-			X509PrincipalExtractor principalExtractor = getPrincipalExtractor();
-
-			AuthenticationWebFilter filter = new AuthenticationWebFilter(authenticationManager);
-			filter.setServerAuthenticationConverter(new ServerX509AuthenticationConverter(principalExtractor));
-			http.addFilterAt(filter, SecurityWebFiltersOrder.AUTHENTICATION);
-		}
-
-		private X509PrincipalExtractor getPrincipalExtractor() {
-			if (this.principalExtractor != null) {
-				return this.principalExtractor;
-			}
-
-			return new SubjectDnX509PrincipalExtractor();
-		}
-
-		private ReactiveAuthenticationManager getAuthenticationManager() {
-			if (this.authenticationManager != null) {
-				return this.authenticationManager;
-			}
-
-			ReactiveUserDetailsService userDetailsService = getBean(ReactiveUserDetailsService.class);
-			ReactivePreAuthenticatedAuthenticationManager authenticationManager = new ReactivePreAuthenticatedAuthenticationManager(userDetailsService);
-
-			return authenticationManager;
-		}
-
-		private X509Spec() {
-		}
-	}
-
-	/**
-	 * Configures authentication support using an OAuth 2.0 and/or OpenID Connect 1.0 Provider.
+	 * Configures authentication support using an OAuth 2.0 and/or OpenID Connect 1.0
+	 * Provider.
 	 *
 	 * <pre class="code">
 	 *  &#064;Bean
@@ -932,8 +822,6 @@ public class ServerHttpSecurity {
 	 *      return http.build();
 	 *  }
 	 * </pre>
-	 *
-	 *
 	 * @return the {@link OAuth2LoginSpec} to customize
 	 */
 	public OAuth2LoginSpec oauth2Login() {
@@ -944,14 +832,15 @@ public class ServerHttpSecurity {
 	}
 
 	/**
-	 * Configures authentication support using an OAuth 2.0 and/or OpenID Connect 1.0 Provider.
+	 * Configures authentication support using an OAuth 2.0 and/or OpenID Connect 1.0
+	 * Provider.
 	 *
 	 * <pre class="code">
 	 *  &#064;Bean
 	 *  public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
 	 *      http
 	 *          // ...
-	 *          .oauth2Login(oauth2Login ->
+	 *          .oauth2Login((oauth2Login) ->
 	 *              oauth2Login
 	 *                  .authenticationConverter(authenticationConverter)
 	 *                  .authenticationManager(manager)
@@ -959,9 +848,8 @@ public class ServerHttpSecurity {
 	 *      return http.build();
 	 *  }
 	 * </pre>
-	 *
-	 * @param oauth2LoginCustomizer the {@link Customizer} to provide more options for
-	 * the {@link OAuth2LoginSpec}
+	 * @param oauth2LoginCustomizer the {@link Customizer} to provide more options for the
+	 * {@link OAuth2LoginSpec}
 	 * @return the {@link ServerHttpSecurity} to customize
 	 */
 	public ServerHttpSecurity oauth2Login(Customizer<OAuth2LoginSpec> oauth2LoginCustomizer) {
@@ -970,388 +858,6 @@ public class ServerHttpSecurity {
 		}
 		oauth2LoginCustomizer.customize(this.oauth2Login);
 		return this;
-	}
-
-	public class OAuth2LoginSpec {
-		private ReactiveClientRegistrationRepository clientRegistrationRepository;
-
-		private ServerOAuth2AuthorizedClientRepository authorizedClientRepository;
-
-		private ServerAuthorizationRequestRepository<OAuth2AuthorizationRequest> authorizationRequestRepository;
-
-		private ReactiveAuthenticationManager authenticationManager;
-
-		private ServerSecurityContextRepository securityContextRepository;
-
-		private ServerAuthenticationConverter authenticationConverter;
-
-		private ServerOAuth2AuthorizationRequestResolver authorizationRequestResolver;
-
-		private ServerWebExchangeMatcher authenticationMatcher;
-
-		private ServerAuthenticationSuccessHandler authenticationSuccessHandler;
-
-		private ServerAuthenticationFailureHandler authenticationFailureHandler;
-
-		/**
-		 * Configures the {@link ReactiveAuthenticationManager} to use. The default is
-		 * {@link OAuth2AuthorizationCodeReactiveAuthenticationManager}
-		 * @param authenticationManager the manager to use
-		 * @return the {@link OAuth2LoginSpec} to customize
-		 */
-		public OAuth2LoginSpec authenticationManager(ReactiveAuthenticationManager authenticationManager) {
-			this.authenticationManager = authenticationManager;
-			return this;
-		}
-
-		/**
-		 * The {@link ServerSecurityContextRepository} used to save the {@code Authentication}. Defaults to
-		 * {@link WebSessionServerSecurityContextRepository}.
-		 *
-		 * @since 5.2
-		 * @param securityContextRepository the repository to use
-		 * @return the {@link OAuth2LoginSpec} to continue configuring
-		 */
-		public OAuth2LoginSpec securityContextRepository(ServerSecurityContextRepository securityContextRepository) {
-			this.securityContextRepository = securityContextRepository;
-			return this;
-		}
-
-		/**
-		 * The {@link ServerAuthenticationSuccessHandler} used after authentication success. Defaults to
-		 * {@link RedirectServerAuthenticationSuccessHandler} redirecting to "/".
-		 *
-		 * @since 5.2
-		 * @param authenticationSuccessHandler the success handler to use
-		 * @return the {@link OAuth2LoginSpec} to customize
-		 */
-		public OAuth2LoginSpec authenticationSuccessHandler(ServerAuthenticationSuccessHandler authenticationSuccessHandler) {
-			Assert.notNull(authenticationSuccessHandler, "authenticationSuccessHandler cannot be null");
-			this.authenticationSuccessHandler = authenticationSuccessHandler;
-			return this;
-		}
-
-		/**
-		 * The {@link ServerAuthenticationFailureHandler} used after authentication failure.
-		 * Defaults to {@link RedirectServerAuthenticationFailureHandler} redirecting to "/login?error".
-		 *
-		 * @since 5.2
-		 * @param authenticationFailureHandler the failure handler to use
-		 * @return the {@link OAuth2LoginSpec} to customize
-		 */
-		public OAuth2LoginSpec authenticationFailureHandler(ServerAuthenticationFailureHandler authenticationFailureHandler) {
-			Assert.notNull(authenticationFailureHandler, "authenticationFailureHandler cannot be null");
-			this.authenticationFailureHandler = authenticationFailureHandler;
-			return this;
-		}
-
-		/**
-		 * Gets the {@link ReactiveAuthenticationManager} to use. First tries an explicitly configured manager, and
-		 * defaults to {@link OAuth2AuthorizationCodeReactiveAuthenticationManager}
-		 *
-		 * @return the {@link ReactiveAuthenticationManager} to use
-		 */
-		private ReactiveAuthenticationManager getAuthenticationManager() {
-			if (this.authenticationManager == null) {
-				this.authenticationManager = createDefault();
-			}
-			return this.authenticationManager;
-		}
-
-		private ReactiveAuthenticationManager createDefault() {
-			ReactiveOAuth2AccessTokenResponseClient<OAuth2AuthorizationCodeGrantRequest> client = getAccessTokenResponseClient();
-			OAuth2LoginReactiveAuthenticationManager oauth2Manager = new OAuth2LoginReactiveAuthenticationManager(client, getOauth2UserService());
-			GrantedAuthoritiesMapper authoritiesMapper = getBeanOrNull(GrantedAuthoritiesMapper.class);
-			if (authoritiesMapper != null) {
-				oauth2Manager.setAuthoritiesMapper(authoritiesMapper);
-			}
-			boolean oidcAuthenticationProviderEnabled = ClassUtils.isPresent(
-					"org.springframework.security.oauth2.jwt.JwtDecoder", this.getClass().getClassLoader());
-			if (oidcAuthenticationProviderEnabled) {
-				OidcAuthorizationCodeReactiveAuthenticationManager oidc =
-						new OidcAuthorizationCodeReactiveAuthenticationManager(client, getOidcUserService());
-				ResolvableType type = ResolvableType.forClassWithGenerics(
-						ReactiveJwtDecoderFactory.class, ClientRegistration.class);
-				ReactiveJwtDecoderFactory<ClientRegistration> jwtDecoderFactory = getBeanOrNull(type);
-				if (jwtDecoderFactory != null) {
-					oidc.setJwtDecoderFactory(jwtDecoderFactory);
-				}
-				if (authoritiesMapper != null) {
-					oidc.setAuthoritiesMapper(authoritiesMapper);
-				}
-				return new DelegatingReactiveAuthenticationManager(oidc, oauth2Manager);
-			}
-			return oauth2Manager;
-		}
-
-		/**
-		 * Sets the converter to use
-		 * @param authenticationConverter the converter to use
-		 * @return the {@link OAuth2LoginSpec} to customize
-		 */
-		public OAuth2LoginSpec authenticationConverter(ServerAuthenticationConverter authenticationConverter) {
-			this.authenticationConverter = authenticationConverter;
-			return this;
-		}
-
-		private ServerAuthenticationConverter getAuthenticationConverter(ReactiveClientRegistrationRepository clientRegistrationRepository) {
-			if (this.authenticationConverter == null) {
-				ServerOAuth2AuthorizationCodeAuthenticationTokenConverter delegate =
-						new ServerOAuth2AuthorizationCodeAuthenticationTokenConverter(clientRegistrationRepository);
-				delegate.setAuthorizationRequestRepository(getAuthorizationRequestRepository());
-				ServerAuthenticationConverter authenticationConverter = exchange ->
-						delegate.convert(exchange).onErrorMap(OAuth2AuthorizationException.class,
-								e -> new OAuth2AuthenticationException(e.getError(), e.getError().toString()));
-				this.authenticationConverter = authenticationConverter;
-				return authenticationConverter;
-			}
-			return this.authenticationConverter;
-		}
-
-		public OAuth2LoginSpec clientRegistrationRepository(ReactiveClientRegistrationRepository clientRegistrationRepository) {
-			this.clientRegistrationRepository = clientRegistrationRepository;
-			return this;
-		}
-
-		public OAuth2LoginSpec authorizedClientService(ReactiveOAuth2AuthorizedClientService authorizedClientService) {
-			this.authorizedClientRepository = new AuthenticatedPrincipalServerOAuth2AuthorizedClientRepository(authorizedClientService);
-			return this;
-		}
-
-		public OAuth2LoginSpec authorizedClientRepository(ServerOAuth2AuthorizedClientRepository authorizedClientRepository) {
-			this.authorizedClientRepository = authorizedClientRepository;
-			return this;
-		}
-
-		/**
-		 * Sets the repository to use for storing {@link OAuth2AuthorizationRequest}'s.
-		 *
-		 * @since 5.2
-		 * @param authorizationRequestRepository the repository to use for storing {@link OAuth2AuthorizationRequest}'s
-		 * @return the {@link OAuth2LoginSpec} for further configuration
-		 */
-		public OAuth2LoginSpec authorizationRequestRepository(
-				ServerAuthorizationRequestRepository<OAuth2AuthorizationRequest> authorizationRequestRepository) {
-			this.authorizationRequestRepository = authorizationRequestRepository;
-			return this;
-		}
-
-		/**
-		 * Sets the resolver used for resolving {@link OAuth2AuthorizationRequest}'s.
-		 *
-		 * @since 5.2
-		 * @param authorizationRequestResolver the resolver used for resolving {@link OAuth2AuthorizationRequest}'s
-		 * @return the {@link OAuth2LoginSpec} for further configuration
-		 */
-		public OAuth2LoginSpec authorizationRequestResolver(ServerOAuth2AuthorizationRequestResolver authorizationRequestResolver) {
-			this.authorizationRequestResolver = authorizationRequestResolver;
-			return this;
-		}
-
-		/**
-		 * Sets the {@link ServerWebExchangeMatcher matcher} used for determining if the request is an authentication request.
-		 *
-		 * @since 5.2
-		 * @param authenticationMatcher the {@link ServerWebExchangeMatcher matcher} used for determining if the request is an authentication request
-		 * @return the {@link OAuth2LoginSpec} for further configuration
-		 */
-		public OAuth2LoginSpec authenticationMatcher(ServerWebExchangeMatcher authenticationMatcher) {
-			this.authenticationMatcher = authenticationMatcher;
-			return this;
-		}
-
-		private ServerWebExchangeMatcher getAuthenticationMatcher() {
-			if (this.authenticationMatcher == null) {
-				this.authenticationMatcher = createAttemptAuthenticationRequestMatcher();
-			}
-			return this.authenticationMatcher;
-		}
-
-		/**
-		 * Allows method chaining to continue configuring the {@link ServerHttpSecurity}
-		 * @return the {@link ServerHttpSecurity} to continue configuring
-		 */
-		public ServerHttpSecurity and() {
-			return ServerHttpSecurity.this;
-		}
-
-
-		protected void configure(ServerHttpSecurity http) {
-			ReactiveClientRegistrationRepository clientRegistrationRepository = getClientRegistrationRepository();
-			ServerOAuth2AuthorizedClientRepository authorizedClientRepository = getAuthorizedClientRepository();
-			OAuth2AuthorizationRequestRedirectWebFilter oauthRedirectFilter = getRedirectWebFilter();
-			ServerAuthorizationRequestRepository<OAuth2AuthorizationRequest> authorizationRequestRepository =
-					getAuthorizationRequestRepository();
-			oauthRedirectFilter.setAuthorizationRequestRepository(authorizationRequestRepository);
-			oauthRedirectFilter.setRequestCache(http.requestCache.requestCache);
-
-			ReactiveAuthenticationManager manager = getAuthenticationManager();
-
-			AuthenticationWebFilter authenticationFilter = new OAuth2LoginAuthenticationWebFilter(manager, authorizedClientRepository);
-			authenticationFilter.setRequiresAuthenticationMatcher(getAuthenticationMatcher());
-			authenticationFilter.setServerAuthenticationConverter(getAuthenticationConverter(clientRegistrationRepository));
-
-			authenticationFilter.setAuthenticationSuccessHandler(getAuthenticationSuccessHandler(http));
-			authenticationFilter.setAuthenticationFailureHandler(getAuthenticationFailureHandler());
-			authenticationFilter.setSecurityContextRepository(this.securityContextRepository);
-
-			setDefaultEntryPoints(http);
-
-			http.addFilterAt(oauthRedirectFilter, SecurityWebFiltersOrder.HTTP_BASIC);
-			http.addFilterAt(authenticationFilter, SecurityWebFiltersOrder.AUTHENTICATION);
-		}
-
-		private void setDefaultEntryPoints(ServerHttpSecurity http) {
-			String defaultLoginPage = "/login";
-			Map<String, String> urlToText = http.oauth2Login.getLinks();
-			String providerLoginPage = null;
-			if (urlToText.size() == 1) {
-				providerLoginPage = urlToText.keySet().iterator().next();
-			}
-
-			MediaTypeServerWebExchangeMatcher htmlMatcher = new MediaTypeServerWebExchangeMatcher(
-					MediaType.APPLICATION_XHTML_XML, new MediaType("image", "*"),
-					MediaType.TEXT_HTML, MediaType.TEXT_PLAIN);
-			htmlMatcher.setIgnoredMediaTypes(Collections.singleton(MediaType.ALL));
-
-			ServerWebExchangeMatcher xhrMatcher = exchange -> {
-				if (exchange.getRequest().getHeaders().getOrEmpty("X-Requested-With").contains("XMLHttpRequest")) {
-					return ServerWebExchangeMatcher.MatchResult.match();
-				}
-				return ServerWebExchangeMatcher.MatchResult.notMatch();
-			};
-			ServerWebExchangeMatcher notXhrMatcher = new NegatedServerWebExchangeMatcher(xhrMatcher);
-
-			ServerWebExchangeMatcher defaultEntryPointMatcher = new AndServerWebExchangeMatcher(
-					notXhrMatcher, htmlMatcher);
-
-			if (providerLoginPage != null) {
-				ServerWebExchangeMatcher loginPageMatcher = new PathPatternParserServerWebExchangeMatcher(defaultLoginPage);
-				ServerWebExchangeMatcher faviconMatcher = new PathPatternParserServerWebExchangeMatcher("/favicon.ico");
-				ServerWebExchangeMatcher defaultLoginPageMatcher = new AndServerWebExchangeMatcher(
-						new OrServerWebExchangeMatcher(loginPageMatcher, faviconMatcher), defaultEntryPointMatcher);
-
-				ServerWebExchangeMatcher matcher = new AndServerWebExchangeMatcher(
-						notXhrMatcher, new NegatedServerWebExchangeMatcher(defaultLoginPageMatcher));
-				RedirectServerAuthenticationEntryPoint entryPoint =
-						new RedirectServerAuthenticationEntryPoint(providerLoginPage);
-				entryPoint.setRequestCache(http.requestCache.requestCache);
-				http.defaultEntryPoints.add(new DelegateEntry(matcher, entryPoint));
-			}
-
-			RedirectServerAuthenticationEntryPoint defaultEntryPoint =
-					new RedirectServerAuthenticationEntryPoint(defaultLoginPage);
-			defaultEntryPoint.setRequestCache(http.requestCache.requestCache);
-			http.defaultEntryPoints.add(new DelegateEntry(defaultEntryPointMatcher, defaultEntryPoint));
-		}
-
-		private ServerAuthenticationSuccessHandler getAuthenticationSuccessHandler(ServerHttpSecurity http) {
-			if (this.authenticationSuccessHandler == null) {
-				RedirectServerAuthenticationSuccessHandler handler = new RedirectServerAuthenticationSuccessHandler();
-				handler.setRequestCache(http.requestCache.requestCache);
-				this.authenticationSuccessHandler = handler;
-			}
-			return this.authenticationSuccessHandler;
-		}
-
-		private ServerAuthenticationFailureHandler getAuthenticationFailureHandler() {
-			if (this.authenticationFailureHandler == null) {
-				this.authenticationFailureHandler = new RedirectServerAuthenticationFailureHandler("/login?error");
-			}
-			return this.authenticationFailureHandler;
-		}
-
-		private ServerWebExchangeMatcher createAttemptAuthenticationRequestMatcher() {
-			return new PathPatternParserServerWebExchangeMatcher("/login/oauth2/code/{registrationId}");
-		}
-
-		private ReactiveOAuth2UserService<OidcUserRequest, OidcUser> getOidcUserService() {
-			ResolvableType type = ResolvableType.forClassWithGenerics(ReactiveOAuth2UserService.class, OidcUserRequest.class, OidcUser.class);
-			ReactiveOAuth2UserService<OidcUserRequest, OidcUser> bean = getBeanOrNull(type);
-			if (bean == null) {
-				return new OidcReactiveOAuth2UserService();
-			}
-
-			return bean;
-		}
-
-		private ReactiveOAuth2UserService<OAuth2UserRequest, OAuth2User> getOauth2UserService() {
-			ResolvableType type = ResolvableType.forClassWithGenerics(ReactiveOAuth2UserService.class, OAuth2UserRequest.class, OAuth2User.class);
-			ReactiveOAuth2UserService<OAuth2UserRequest, OAuth2User> bean = getBeanOrNull(type);
-			if (bean == null) {
-				return new DefaultReactiveOAuth2UserService();
-			}
-
-			return bean;
-		}
-
-		private Map<String, String> getLinks() {
-			Iterable<ClientRegistration> registrations = getBeanOrNull(ResolvableType.forClassWithGenerics(Iterable.class, ClientRegistration.class));
-			if (registrations == null) {
-				return Collections.emptyMap();
-			}
-			Map<String, String> result = new HashMap<>();
-			registrations.iterator().forEachRemaining(r -> result.put("/oauth2/authorization/" + r.getRegistrationId(), r.getClientName()));
-			return result;
-		}
-
-		private ReactiveOAuth2AccessTokenResponseClient<OAuth2AuthorizationCodeGrantRequest> getAccessTokenResponseClient() {
-			ResolvableType type = ResolvableType.forClassWithGenerics(ReactiveOAuth2AccessTokenResponseClient.class, OAuth2AuthorizationCodeGrantRequest.class);
-			ReactiveOAuth2AccessTokenResponseClient<OAuth2AuthorizationCodeGrantRequest> bean = getBeanOrNull(type);
-			if (bean == null) {
-				return new WebClientReactiveAuthorizationCodeTokenResponseClient();
-			}
-			return bean;
-		}
-
-		private ReactiveClientRegistrationRepository getClientRegistrationRepository() {
-			if (this.clientRegistrationRepository == null) {
-				this.clientRegistrationRepository = getBeanOrNull(ReactiveClientRegistrationRepository.class);
-			}
-			return this.clientRegistrationRepository;
-		}
-
-		private OAuth2AuthorizationRequestRedirectWebFilter getRedirectWebFilter() {
-			OAuth2AuthorizationRequestRedirectWebFilter oauthRedirectFilter;
-			if (this.authorizationRequestResolver == null) {
-				oauthRedirectFilter = new OAuth2AuthorizationRequestRedirectWebFilter(getClientRegistrationRepository());
-			} else {
-				oauthRedirectFilter = new OAuth2AuthorizationRequestRedirectWebFilter(this.authorizationRequestResolver);
-			}
-			return oauthRedirectFilter;
-		}
-
-		private ServerOAuth2AuthorizedClientRepository getAuthorizedClientRepository() {
-			ServerOAuth2AuthorizedClientRepository result = this.authorizedClientRepository;
-			if (result == null) {
-				result = getBeanOrNull(ServerOAuth2AuthorizedClientRepository.class);
-			}
-			if (result == null) {
-				ReactiveOAuth2AuthorizedClientService authorizedClientService = getAuthorizedClientService();
-				if (authorizedClientService != null) {
-					result = new AuthenticatedPrincipalServerOAuth2AuthorizedClientRepository(
-							authorizedClientService);
-				}
-			}
-			return result;
-		}
-
-		private ServerAuthorizationRequestRepository<OAuth2AuthorizationRequest> getAuthorizationRequestRepository() {
-			if (this.authorizationRequestRepository == null) {
-				this.authorizationRequestRepository = new WebSessionOAuth2ServerAuthorizationRequestRepository();
-			}
-			return this.authorizationRequestRepository;
-		}
-
-		private ReactiveOAuth2AuthorizedClientService getAuthorizedClientService() {
-			ReactiveOAuth2AuthorizedClientService service = getBeanOrNull(ReactiveOAuth2AuthorizedClientService.class);
-			if (service == null) {
-				service = new InMemoryReactiveOAuth2AuthorizedClientService(getClientRegistrationRepository());
-			}
-			return service;
-		}
-
-		private OAuth2LoginSpec() {}
 	}
 
 	/**
@@ -1368,8 +874,6 @@ public class ServerHttpSecurity {
 	 *      return http.build();
 	 *  }
 	 * </pre>
-	 *
-	 *
 	 * @return the {@link OAuth2ClientSpec} to customize
 	 */
 	public OAuth2ClientSpec oauth2Client() {
@@ -1387,7 +891,7 @@ public class ServerHttpSecurity {
 	 *  public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
 	 *      http
 	 *          // ...
-	 *          .oauth2Client(oauth2Client ->
+	 *          .oauth2Client((oauth2Client) ->
 	 *              oauth2Client
 	 *                  .clientRegistrationRepository(clientRegistrationRepository)
 	 *                  .authorizedClientRepository(authorizedClientRepository)
@@ -1395,7 +899,6 @@ public class ServerHttpSecurity {
 	 *      return http.build();
 	 *  }
 	 * </pre>
-	 *
 	 * @param oauth2ClientCustomizer the {@link Customizer} to provide more options for
 	 * the {@link OAuth2ClientSpec}
 	 * @return the {@link ServerHttpSecurity} to customize
@@ -1406,165 +909,6 @@ public class ServerHttpSecurity {
 		}
 		oauth2ClientCustomizer.customize(this.client);
 		return this;
-	}
-
-	public class OAuth2ClientSpec {
-		private ReactiveClientRegistrationRepository clientRegistrationRepository;
-
-		private ServerAuthenticationConverter authenticationConverter;
-
-		private ServerOAuth2AuthorizedClientRepository authorizedClientRepository;
-
-		private ReactiveAuthenticationManager authenticationManager;
-
-		private ServerAuthorizationRequestRepository<OAuth2AuthorizationRequest> authorizationRequestRepository;
-
-		/**
-		 * Sets the converter to use
-		 * @param authenticationConverter the converter to use
-		 * @return the {@link OAuth2ClientSpec} to customize
-		 */
-		public OAuth2ClientSpec authenticationConverter(ServerAuthenticationConverter authenticationConverter) {
-			this.authenticationConverter = authenticationConverter;
-			return this;
-		}
-
-		private ServerAuthenticationConverter getAuthenticationConverter() {
-			if (this.authenticationConverter == null) {
-				ServerOAuth2AuthorizationCodeAuthenticationTokenConverter authenticationConverter =
-						new ServerOAuth2AuthorizationCodeAuthenticationTokenConverter(getClientRegistrationRepository());
-				authenticationConverter.setAuthorizationRequestRepository(getAuthorizationRequestRepository());
-				this.authenticationConverter = authenticationConverter;
-			}
-			return this.authenticationConverter;
-		}
-
-		/**
-		 * Configures the {@link ReactiveAuthenticationManager} to use. The default is
-		 * {@link OAuth2AuthorizationCodeReactiveAuthenticationManager}
-		 * @param authenticationManager the manager to use
-		 * @return the {@link OAuth2ClientSpec} to customize
-		 */
-		public OAuth2ClientSpec authenticationManager(ReactiveAuthenticationManager authenticationManager) {
-			this.authenticationManager = authenticationManager;
-			return this;
-		}
-
-		/**
-		 * Gets the {@link ReactiveAuthenticationManager} to use. First tries an explicitly configured manager, and
-		 * defaults to {@link OAuth2AuthorizationCodeReactiveAuthenticationManager}
-		 *
-		 * @return the {@link ReactiveAuthenticationManager} to use
-		 */
-		private ReactiveAuthenticationManager getAuthenticationManager() {
-			if (this.authenticationManager == null) {
-				this.authenticationManager = new OAuth2AuthorizationCodeReactiveAuthenticationManager(new WebClientReactiveAuthorizationCodeTokenResponseClient());
-			}
-			return this.authenticationManager;
-		}
-
-		/**
-		 * Configures the {@link ReactiveClientRegistrationRepository}. Default is to look the value up as a Bean.
-		 * @param clientRegistrationRepository the repository to use
-		 * @return the {@link OAuth2ClientSpec} to customize
-		 */
-		public OAuth2ClientSpec clientRegistrationRepository(ReactiveClientRegistrationRepository clientRegistrationRepository) {
-			this.clientRegistrationRepository = clientRegistrationRepository;
-			return this;
-		}
-
-		/**
-		 * Configures the {@link ReactiveClientRegistrationRepository}. Default is to look the value up as a Bean.
-		 * @param authorizedClientRepository the repository to use
-		 * @return the {@link OAuth2ClientSpec} to customize
-		 */
-		public OAuth2ClientSpec authorizedClientRepository(ServerOAuth2AuthorizedClientRepository authorizedClientRepository) {
-			this.authorizedClientRepository = authorizedClientRepository;
-			return this;
-		}
-
-		/**
-		 * Sets the repository to use for storing {@link OAuth2AuthorizationRequest}'s.
-		 *
-		 * @since 5.2
-		 * @param authorizationRequestRepository the repository to use for storing {@link OAuth2AuthorizationRequest}'s
-		 * @return the {@link OAuth2ClientSpec} to customize
-		 */
-		public OAuth2ClientSpec authorizationRequestRepository(
-				ServerAuthorizationRequestRepository<OAuth2AuthorizationRequest> authorizationRequestRepository) {
-			this.authorizationRequestRepository = authorizationRequestRepository;
-			return this;
-		}
-
-		private ServerAuthorizationRequestRepository<OAuth2AuthorizationRequest> getAuthorizationRequestRepository() {
-			if (this.authorizationRequestRepository == null) {
-				this.authorizationRequestRepository = new WebSessionOAuth2ServerAuthorizationRequestRepository();
-			}
-			return this.authorizationRequestRepository;
-		}
-
-		/**
-		 * Allows method chaining to continue configuring the {@link ServerHttpSecurity}
-		 * @return the {@link ServerHttpSecurity} to continue configuring
-		 */
-		public ServerHttpSecurity and() {
-			return ServerHttpSecurity.this;
-		}
-
-		protected void configure(ServerHttpSecurity http) {
-			ReactiveClientRegistrationRepository clientRegistrationRepository = getClientRegistrationRepository();
-			ServerOAuth2AuthorizedClientRepository authorizedClientRepository = getAuthorizedClientRepository();
-			ServerAuthenticationConverter authenticationConverter = getAuthenticationConverter();
-			ReactiveAuthenticationManager authenticationManager = getAuthenticationManager();
-			OAuth2AuthorizationCodeGrantWebFilter codeGrantWebFilter = new OAuth2AuthorizationCodeGrantWebFilter(
-					authenticationManager, authenticationConverter, authorizedClientRepository);
-			codeGrantWebFilter.setAuthorizationRequestRepository(getAuthorizationRequestRepository());
-			if (http.requestCache != null) {
-				codeGrantWebFilter.setRequestCache(http.requestCache.requestCache);
-			}
-
-			OAuth2AuthorizationRequestRedirectWebFilter oauthRedirectFilter = new OAuth2AuthorizationRequestRedirectWebFilter(
-					clientRegistrationRepository);
-			oauthRedirectFilter.setAuthorizationRequestRepository(getAuthorizationRequestRepository());
-			if (http.requestCache != null) {
-				oauthRedirectFilter.setRequestCache(http.requestCache.requestCache);
-			}
-
-			http.addFilterAt(codeGrantWebFilter, SecurityWebFiltersOrder.OAUTH2_AUTHORIZATION_CODE);
-			http.addFilterAt(oauthRedirectFilter, SecurityWebFiltersOrder.HTTP_BASIC);
-		}
-
-		private ReactiveClientRegistrationRepository getClientRegistrationRepository() {
-			if (this.clientRegistrationRepository != null) {
-				return this.clientRegistrationRepository;
-			}
-			return getBeanOrNull(ReactiveClientRegistrationRepository.class);
-		}
-
-		private ServerOAuth2AuthorizedClientRepository getAuthorizedClientRepository() {
-			if (this.authorizedClientRepository != null) {
-				return this.authorizedClientRepository;
-			}
-			ServerOAuth2AuthorizedClientRepository result = getBeanOrNull(ServerOAuth2AuthorizedClientRepository.class);
-			if (result == null) {
-				ReactiveOAuth2AuthorizedClientService authorizedClientService = getAuthorizedClientService();
-				if (authorizedClientService != null) {
-					result = new AuthenticatedPrincipalServerOAuth2AuthorizedClientRepository(
-							authorizedClientService);
-				}
-			}
-			return result;
-		}
-
-		private ReactiveOAuth2AuthorizedClientService getAuthorizedClientService() {
-			ReactiveOAuth2AuthorizedClientService service = getBeanOrNull(ReactiveOAuth2AuthorizedClientService.class);
-			if (service == null) {
-				service = new InMemoryReactiveOAuth2AuthorizedClientService(getClientRegistrationRepository());
-			}
-			return service;
-		}
-
-		private OAuth2ClientSpec() {}
 	}
 
 	/**
@@ -1581,7 +925,6 @@ public class ServerHttpSecurity {
 	 *      return http.build();
 	 *  }
 	 * </pre>
-	 *
 	 * @return the {@link OAuth2ResourceServerSpec} to customize
 	 */
 	public OAuth2ResourceServerSpec oauth2ResourceServer() {
@@ -1599,9 +942,9 @@ public class ServerHttpSecurity {
 	 *  public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
 	 *      http
 	 *          // ...
-	 *          .oauth2ResourceServer(oauth2ResourceServer ->
+	 *          .oauth2ResourceServer((oauth2ResourceServer) ->
 	 *              oauth2ResourceServer
-	 *                  .jwt(jwt ->
+	 *                  .jwt((jwt) ->
 	 *                      jwt
 	 *                          .publicKey(publicKey())
 	 *                  )
@@ -1609,454 +952,17 @@ public class ServerHttpSecurity {
 	 *      return http.build();
 	 *  }
 	 * </pre>
-	 *
-	 * @param oauth2ResourceServerCustomizer the {@link Customizer} to provide more options for
-	 * the {@link OAuth2ResourceServerSpec}
+	 * @param oauth2ResourceServerCustomizer the {@link Customizer} to provide more
+	 * options for the {@link OAuth2ResourceServerSpec}
 	 * @return the {@link ServerHttpSecurity} to customize
 	 */
-	public ServerHttpSecurity oauth2ResourceServer(Customizer<OAuth2ResourceServerSpec> oauth2ResourceServerCustomizer) {
+	public ServerHttpSecurity oauth2ResourceServer(
+			Customizer<OAuth2ResourceServerSpec> oauth2ResourceServerCustomizer) {
 		if (this.resourceServer == null) {
 			this.resourceServer = new OAuth2ResourceServerSpec();
 		}
 		oauth2ResourceServerCustomizer.customize(this.resourceServer);
 		return this;
-	}
-
-	/**
-	 * Configures OAuth2 Resource Server Support
-	 */
-	public class OAuth2ResourceServerSpec {
-		private ServerAuthenticationEntryPoint entryPoint = new BearerTokenServerAuthenticationEntryPoint();
-		private ServerAccessDeniedHandler accessDeniedHandler = new BearerTokenServerAccessDeniedHandler();
-		private ServerAuthenticationConverter bearerTokenConverter = new ServerBearerTokenAuthenticationConverter();
-		private BearerTokenServerWebExchangeMatcher bearerTokenServerWebExchangeMatcher =
-				new BearerTokenServerWebExchangeMatcher();
-
-		private JwtSpec jwt;
-		private OpaqueTokenSpec opaqueToken;
-		private ReactiveAuthenticationManagerResolver<ServerWebExchange> authenticationManagerResolver;
-
-		/**
-		 * Configures the {@link ServerAccessDeniedHandler} to use for requests authenticating with
-		 * <a href="https://tools.ietf.org/html/rfc6750#section-1.2" target="_blank">Bearer Token</a>s.
-		 * requests.
-		 *
-		 * @param accessDeniedHandler the {@link ServerAccessDeniedHandler} to use
-		 * @return the {@link OAuth2ResourceServerSpec} for additional configuration
-		 * @since 5.2
-		 */
-		public OAuth2ResourceServerSpec accessDeniedHandler(ServerAccessDeniedHandler accessDeniedHandler) {
-			Assert.notNull(accessDeniedHandler, "accessDeniedHandler cannot be null");
-			this.accessDeniedHandler = accessDeniedHandler;
-			return this;
-		}
-
-		/**
-		 * Configures the {@link ServerAuthenticationEntryPoint} to use for requests authenticating with
-		 * <a href="https://tools.ietf.org/html/rfc6750#section-1.2" target="_blank">Bearer Token</a>s.
-		 *
-		 * @param entryPoint the {@link ServerAuthenticationEntryPoint} to use
-		 * @return the {@link OAuth2ResourceServerSpec} for additional configuration
-		 * @since 5.2
-		 */
-		public OAuth2ResourceServerSpec authenticationEntryPoint(ServerAuthenticationEntryPoint entryPoint) {
-			Assert.notNull(entryPoint, "entryPoint cannot be null");
-			this.entryPoint = entryPoint;
-			return this;
-		}
-
-		/**
-		 * Configures the {@link ServerAuthenticationConverter} to use for requests authenticating with
-		 * <a href="https://tools.ietf.org/html/rfc6750#section-1.2" target="_blank">Bearer Token</a>s.
-		 *
-		 * @param bearerTokenConverter The {@link ServerAuthenticationConverter} to use
-		 * @return The {@link OAuth2ResourceServerSpec} for additional configuration
-		 * @since 5.2
-		 */
-		public OAuth2ResourceServerSpec bearerTokenConverter(ServerAuthenticationConverter bearerTokenConverter) {
-			Assert.notNull(bearerTokenConverter, "bearerTokenConverter cannot be null");
-			this.bearerTokenConverter = bearerTokenConverter;
-			return this;
-		}
-
-		/**
-		 * Configures the {@link ReactiveAuthenticationManagerResolver}
-		 *
-		 * @param authenticationManagerResolver the {@link ReactiveAuthenticationManagerResolver}
-		 * @return the {@link OAuth2ResourceServerSpec} for additional configuration
-		 * @since 5.3
-		 */
-		public OAuth2ResourceServerSpec authenticationManagerResolver(
-				ReactiveAuthenticationManagerResolver<ServerWebExchange> authenticationManagerResolver) {
-			Assert.notNull(authenticationManagerResolver, "authenticationManagerResolver cannot be null");
-			this.authenticationManagerResolver = authenticationManagerResolver;
-			return this;
-		}
-
-		/**
-		 * Enables JWT Resource Server support.
-		 *
-		 * @return the {@link JwtSpec} for additional configuration
-		 */
-		public JwtSpec jwt() {
-			if (this.jwt == null) {
-				this.jwt = new JwtSpec();
-			}
-			return this.jwt;
-		}
-
-		/**
-		 * Enables JWT Resource Server support.
-		 *
-		 * @param jwtCustomizer the {@link Customizer} to provide more options for
-		 * the {@link JwtSpec}
-		 * @return the {@link OAuth2ResourceServerSpec} to customize
-		 */
-		public OAuth2ResourceServerSpec jwt(Customizer<JwtSpec> jwtCustomizer) {
-			if (this.jwt == null) {
-				this.jwt = new JwtSpec();
-			}
-			jwtCustomizer.customize(this.jwt);
-			return this;
-		}
-
-		/**
-		 * Enables Opaque Token Resource Server support.
-		 *
-		 * @return the {@link OpaqueTokenSpec} for additional configuration
-		 */
-		public OpaqueTokenSpec opaqueToken() {
-			if (this.opaqueToken == null) {
-				this.opaqueToken = new OpaqueTokenSpec();
-			}
-			return this.opaqueToken;
-		}
-
-		/**
-		 * Enables Opaque Token Resource Server support.
-		 *
-		 * @param opaqueTokenCustomizer the {@link Customizer} to provide more options for
-		 * the {@link OpaqueTokenSpec}
-		 * @return the {@link OAuth2ResourceServerSpec} to customize
-		 */
-		public OAuth2ResourceServerSpec opaqueToken(Customizer<OpaqueTokenSpec> opaqueTokenCustomizer) {
-			if (this.opaqueToken == null) {
-				this.opaqueToken = new OpaqueTokenSpec();
-			}
-			opaqueTokenCustomizer.customize(this.opaqueToken);
-			return this;
-		}
-
-		protected void configure(ServerHttpSecurity http) {
-			this.bearerTokenServerWebExchangeMatcher
-					.setBearerTokenConverter(this.bearerTokenConverter);
-
-			registerDefaultAccessDeniedHandler(http);
-			registerDefaultAuthenticationEntryPoint(http);
-			registerDefaultCsrfOverride(http);
-
-			validateConfiguration();
-
-			if (this.authenticationManagerResolver != null) {
-				AuthenticationWebFilter oauth2 = new AuthenticationWebFilter(this.authenticationManagerResolver);
-				oauth2.setServerAuthenticationConverter(bearerTokenConverter);
-				oauth2.setAuthenticationFailureHandler(new ServerAuthenticationEntryPointFailureHandler(entryPoint));
-				http.addFilterAt(oauth2, SecurityWebFiltersOrder.AUTHENTICATION);
-			} else if (this.jwt != null) {
-				this.jwt.configure(http);
-			} else if (this.opaqueToken != null) {
-				this.opaqueToken.configure(http);
-			}
-		}
-
-		private void validateConfiguration() {
-			if (this.authenticationManagerResolver == null) {
-				if (this.jwt == null && this.opaqueToken == null) {
-					throw new IllegalStateException("Jwt and Opaque Token are the only supported formats for bearer tokens " +
-							"in Spring Security and neither was found. Make sure to configure JWT " +
-							"via http.oauth2ResourceServer().jwt() or Opaque Tokens via " +
-							"http.oauth2ResourceServer().opaqueToken().");
-				}
-
-				if (this.jwt != null && this.opaqueToken != null) {
-					throw new IllegalStateException("Spring Security only supports JWTs or Opaque Tokens, not both at the " +
-							"same time.");
-				}
-			} else {
-				if (this.jwt != null || this.opaqueToken != null) {
-					throw new IllegalStateException("If an authenticationManagerResolver() is configured, then it takes " +
-							"precedence over any jwt() or opaqueToken() configuration.");
-				}
-			}
-		}
-
-		private void registerDefaultAccessDeniedHandler(ServerHttpSecurity http) {
-			if ( http.exceptionHandling != null ) {
-				http.defaultAccessDeniedHandlers.add(
-						new ServerWebExchangeDelegatingServerAccessDeniedHandler.DelegateEntry(
-								this.bearerTokenServerWebExchangeMatcher,
-								OAuth2ResourceServerSpec.this.accessDeniedHandler
-						)
-				);
-			}
-		}
-
-		private void registerDefaultAuthenticationEntryPoint(ServerHttpSecurity http) {
-			if (http.exceptionHandling != null) {
-				http.defaultEntryPoints.add(
-						new DelegateEntry(
-								this.bearerTokenServerWebExchangeMatcher,
-								OAuth2ResourceServerSpec.this.entryPoint
-						)
-				);
-			}
-		}
-
-		private void registerDefaultCsrfOverride(ServerHttpSecurity http) {
-			if ( http.csrf != null && !http.csrf.specifiedRequireCsrfProtectionMatcher ) {
-				http
-					.csrf()
-					.requireCsrfProtectionMatcher(
-							new AndServerWebExchangeMatcher(
-									CsrfWebFilter.DEFAULT_CSRF_MATCHER,
-									new NegatedServerWebExchangeMatcher(
-											this.bearerTokenServerWebExchangeMatcher)));
-			}
-		}
-
-		private class BearerTokenServerWebExchangeMatcher implements ServerWebExchangeMatcher {
-			ServerAuthenticationConverter bearerTokenConverter;
-
-			@Override
-			public Mono<MatchResult> matches(ServerWebExchange exchange) {
-				return this.bearerTokenConverter.convert(exchange)
-						.flatMap(this::nullAuthentication)
-						.onErrorResume(e -> notMatch());
-			}
-
-			public void setBearerTokenConverter(ServerAuthenticationConverter bearerTokenConverter) {
-				Assert.notNull(bearerTokenConverter, "bearerTokenConverter cannot be null");
-				this.bearerTokenConverter = bearerTokenConverter;
-			}
-
-			private Mono<MatchResult> nullAuthentication(Authentication authentication) {
-				return authentication == null ? notMatch() : match();
-			}
-		}
-
-		private class BearerTokenAuthenticationWebFilter extends AuthenticationWebFilter {
-			private ServerAuthenticationFailureHandler authenticationFailureHandler;
-
-			BearerTokenAuthenticationWebFilter(ReactiveAuthenticationManager authenticationManager) {
-				super(authenticationManager);
-			}
-
-			@Override
-			public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
-				WebFilterExchange webFilterExchange = new WebFilterExchange(exchange, chain);
-				return super.filter(exchange, chain)
-						.onErrorResume(AuthenticationException.class, e -> this.authenticationFailureHandler
-								.onAuthenticationFailure(webFilterExchange, e));
-			}
-
-			@Override
-			public void setAuthenticationFailureHandler(ServerAuthenticationFailureHandler authenticationFailureHandler) {
-				super.setAuthenticationFailureHandler(authenticationFailureHandler);
-				this.authenticationFailureHandler = authenticationFailureHandler;
-			}
-		}
-
-		/**
-		 * Configures JWT Resource Server Support
-		 */
-		public class JwtSpec {
-			private ReactiveAuthenticationManager authenticationManager;
-			private ReactiveJwtDecoder jwtDecoder;
-			private Converter<Jwt, ? extends Mono<? extends AbstractAuthenticationToken>> jwtAuthenticationConverter
-					= new ReactiveJwtAuthenticationConverterAdapter(new JwtAuthenticationConverter());
-
-			/**
-			 * Configures the {@link ReactiveAuthenticationManager} to use
-			 * @param authenticationManager the authentication manager to use
-			 * @return the {@code JwtSpec} for additional configuration
-			 */
-			public JwtSpec authenticationManager(ReactiveAuthenticationManager authenticationManager) {
-				Assert.notNull(authenticationManager, "authenticationManager cannot be null");
-				this.authenticationManager = authenticationManager;
-				return this;
-			}
-
-			/**
-			 * Configures the {@link Converter} to use for converting a {@link Jwt} into
-			 * an {@link AbstractAuthenticationToken}.
-			 *
-			 * @param jwtAuthenticationConverter the converter to use
-			 * @return the {@code JwtSpec} for additional configuration
-			 * @since 5.1.1
-			 */
-			public JwtSpec jwtAuthenticationConverter
-					(Converter<Jwt, ? extends Mono<? extends AbstractAuthenticationToken>> jwtAuthenticationConverter) {
-				Assert.notNull(jwtAuthenticationConverter, "jwtAuthenticationConverter cannot be null");
-				this.jwtAuthenticationConverter = jwtAuthenticationConverter;
-				return this;
-			}
-
-			/**
-			 * Configures the {@link ReactiveJwtDecoder} to use
-			 * @param jwtDecoder the decoder to use
-			 * @return the {@code JwtSpec} for additional configuration
-			 */
-			public JwtSpec jwtDecoder(ReactiveJwtDecoder jwtDecoder) {
-				this.jwtDecoder = jwtDecoder;
-				return this;
-			}
-
-			/**
-			 * Configures a {@link ReactiveJwtDecoder} that leverages the provided {@link RSAPublicKey}
-			 *
-			 * @param publicKey the public key to use.
-			 * @return the {@code JwtSpec} for additional configuration
-			 */
-			public JwtSpec publicKey(RSAPublicKey publicKey) {
-				this.jwtDecoder = new NimbusReactiveJwtDecoder(publicKey);
-				return this;
-			}
-
-			/**
-			 * Configures a {@link ReactiveJwtDecoder} using
-			 * <a target="_blank" href="https://tools.ietf.org/html/rfc7517">JSON Web Key (JWK)</a> URL
-			 * @param jwkSetUri the URL to use.
-			 * @return the {@code JwtSpec} for additional configuration
-			 */
-			public JwtSpec jwkSetUri(String jwkSetUri) {
-				this.jwtDecoder = new NimbusReactiveJwtDecoder(jwkSetUri);
-				return this;
-			}
-
-			public OAuth2ResourceServerSpec and() {
-				return OAuth2ResourceServerSpec.this;
-			}
-
-			protected void configure(ServerHttpSecurity http) {
-				ReactiveAuthenticationManager authenticationManager = getAuthenticationManager();
-				AuthenticationWebFilter oauth2 = new BearerTokenAuthenticationWebFilter(authenticationManager);
-				oauth2.setServerAuthenticationConverter(bearerTokenConverter);
-				oauth2.setAuthenticationFailureHandler(new ServerAuthenticationEntryPointFailureHandler(entryPoint));
-				http
-					.addFilterAt(oauth2, SecurityWebFiltersOrder.AUTHENTICATION);
-			}
-
-			protected ReactiveJwtDecoder getJwtDecoder() {
-				if (this.jwtDecoder == null) {
-					return getBean(ReactiveJwtDecoder.class);
-				}
-				return this.jwtDecoder;
-			}
-
-			protected Converter<Jwt, ? extends Mono<? extends AbstractAuthenticationToken>>
-					getJwtAuthenticationConverter() {
-
-				return this.jwtAuthenticationConverter;
-			}
-
-			private ReactiveAuthenticationManager getAuthenticationManager() {
-				if (this.authenticationManager != null) {
-					return this.authenticationManager;
-				}
-
-				ReactiveJwtDecoder jwtDecoder = getJwtDecoder();
-				Converter<Jwt, ? extends Mono<? extends AbstractAuthenticationToken>> jwtAuthenticationConverter =
-						getJwtAuthenticationConverter();
-				JwtReactiveAuthenticationManager authenticationManager =
-						new JwtReactiveAuthenticationManager(jwtDecoder);
-				authenticationManager.setJwtAuthenticationConverter(jwtAuthenticationConverter);
-
-				return authenticationManager;
-			}
-		}
-
-		/**
-		 * Configures Opaque Token Resource Server support
-		 *
-		 * @author Josh Cummings
-		 * @since 5.2
-		 */
-		public class OpaqueTokenSpec {
-			private String introspectionUri;
-			private String clientId;
-			private String clientSecret;
-			private Supplier<ReactiveOpaqueTokenIntrospector> introspector;
-
-			/**
-			 * Configures the URI of the Introspection endpoint
-			 * @param introspectionUri The URI of the Introspection endpoint
-			 * @return the {@code OpaqueTokenSpec} for additional configuration
-			 */
-			public OpaqueTokenSpec introspectionUri(String introspectionUri) {
-				Assert.hasText(introspectionUri, "introspectionUri cannot be empty");
-				this.introspectionUri = introspectionUri;
-				this.introspector = () ->
-						new NimbusReactiveOpaqueTokenIntrospector(
-								this.introspectionUri, this.clientId, this.clientSecret);
-				return this;
-			}
-
-			/**
-			 * Configures the credentials for Introspection endpoint
-			 * @param clientId The clientId part of the credentials
-			 * @param clientSecret The clientSecret part of the credentials
-			 * @return the {@code OpaqueTokenSpec} for additional configuration
-			 */
-			public OpaqueTokenSpec introspectionClientCredentials(String clientId, String clientSecret) {
-				Assert.hasText(clientId, "clientId cannot be empty");
-				Assert.notNull(clientSecret, "clientSecret cannot be null");
-				this.clientId = clientId;
-				this.clientSecret = clientSecret;
-				this.introspector = () ->
-						new NimbusReactiveOpaqueTokenIntrospector(
-								this.introspectionUri, this.clientId, this.clientSecret);
-				return this;
-			}
-
-			public OpaqueTokenSpec introspector(ReactiveOpaqueTokenIntrospector introspector) {
-				Assert.notNull(introspector, "introspector cannot be null");
-				this.introspector = () -> introspector;
-				return this;
-			}
-
-			/**
-			 * Allows method chaining to continue configuring the {@link ServerHttpSecurity}
-			 * @return the {@link ServerHttpSecurity} to continue configuring
-			 */
-			public OAuth2ResourceServerSpec and() {
-				return OAuth2ResourceServerSpec.this;
-			}
-
-			protected ReactiveAuthenticationManager getAuthenticationManager() {
-				return new OpaqueTokenReactiveAuthenticationManager(getIntrospector());
-			}
-
-			protected ReactiveOpaqueTokenIntrospector getIntrospector() {
-				if (this.introspector != null) {
-					return this.introspector.get();
-				}
-				return getBean(ReactiveOpaqueTokenIntrospector.class);
-			}
-
-			protected void configure(ServerHttpSecurity http) {
-				ReactiveAuthenticationManager authenticationManager = getAuthenticationManager();
-				AuthenticationWebFilter oauth2 = new BearerTokenAuthenticationWebFilter(authenticationManager);
-				oauth2.setServerAuthenticationConverter(bearerTokenConverter);
-				oauth2.setAuthenticationFailureHandler(new ServerAuthenticationEntryPointFailureHandler(entryPoint));
-				http.addFilterAt(oauth2, SecurityWebFiltersOrder.AUTHENTICATION);
-			}
-
-			private OpaqueTokenSpec() {}
-		}
-
-		public ServerHttpSecurity and() {
-			return ServerHttpSecurity.this;
-		}
 	}
 
 	/**
@@ -2091,7 +997,6 @@ public class ServerHttpSecurity {
 	 *      return http.build();
 	 *  }
 	 * </pre>
-	 *
 	 * @return the {@link HeaderSpec} to customize
 	 */
 	public HeaderSpec headers() {
@@ -2123,15 +1028,15 @@ public class ServerHttpSecurity {
 	 *  public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
 	 *      http
 	 *          // ...
-	 *          .headers(headers ->
+	 *          .headers((headers) ->
 	 *              headers
 	 *                  // customize frame options to be same origin
-	 *                  .frameOptions(frameOptions ->
+	 *                  .frameOptions((frameOptions) ->
 	 *                      frameOptions
 	 *                          .mode(XFrameOptionsServerHttpHeadersWriter.Mode.SAMEORIGIN)
 	 *                   )
 	 *                  // disable cache control
-	 *                  .cache(cache ->
+	 *                  .cache((cache) ->
 	 *                      cache
 	 *                          .disable()
 	 *                  )
@@ -2139,9 +1044,8 @@ public class ServerHttpSecurity {
 	 *      return http.build();
 	 *  }
 	 * </pre>
-	 *
-	 * @param headerCustomizer the {@link Customizer} to provide more options for
-	 * the {@link HeaderSpec}
+	 * @param headerCustomizer the {@link Customizer} to provide more options for the
+	 * {@link HeaderSpec}
 	 * @return the {@link ServerHttpSecurity} to customize
 	 */
 	public ServerHttpSecurity headers(Customizer<HeaderSpec> headerCustomizer) {
@@ -2153,8 +1057,8 @@ public class ServerHttpSecurity {
 	}
 
 	/**
-	 * Configures exception handling (i.e. handles when authentication is requested). An example configuration can
-	 * be found below:
+	 * Configures exception handling (i.e. handles when authentication is requested). An
+	 * example configuration can be found below:
 	 *
 	 * <pre class="code">
 	 *  &#064;Bean
@@ -2167,7 +1071,6 @@ public class ServerHttpSecurity {
 	 *      return http.build();
 	 *  }
 	 * </pre>
-	 *
 	 * @return the {@link ExceptionHandlingSpec} to customize
 	 */
 	public ExceptionHandlingSpec exceptionHandling() {
@@ -2178,15 +1081,15 @@ public class ServerHttpSecurity {
 	}
 
 	/**
-	 * Configures exception handling (i.e. handles when authentication is requested). An example configuration can
-	 * be found below:
+	 * Configures exception handling (i.e. handles when authentication is requested). An
+	 * example configuration can be found below:
 	 *
 	 * <pre class="code">
 	 *  &#064;Bean
 	 *  public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
 	 *      http
 	 *          // ...
-	 *          .exceptionHandling(exceptionHandling ->
+	 *          .exceptionHandling((exceptionHandling) ->
 	 *              exceptionHandling
 	 *                  // customize how to request for authentication
 	 *                  .authenticationEntryPoint(entryPoint)
@@ -2194,9 +1097,8 @@ public class ServerHttpSecurity {
 	 *      return http.build();
 	 *  }
 	 * </pre>
-	 *
-	 * @param exceptionHandlingCustomizer the {@link Customizer} to provide more options for
-	 * the {@link ExceptionHandlingSpec}
+	 * @param exceptionHandlingCustomizer the {@link Customizer} to provide more options
+	 * for the {@link ExceptionHandlingSpec}
 	 * @return the {@link ServerHttpSecurity} to customize
 	 */
 	public ServerHttpSecurity exceptionHandling(Customizer<ExceptionHandlingSpec> exceptionHandlingCustomizer) {
@@ -2225,7 +1127,7 @@ public class ServerHttpSecurity {
 	 *              .pathMatchers("/users/{username}").access((authentication, context) ->
 	 *                  authentication
 	 *                      .map(Authentication::getName)
-	 *                      .map(username -> username.equals(context.getVariables().get("username")))
+	 *                      .map((username) -> username.equals(context.getVariables().get("username")))
 	 *                      .map(AuthorizationDecision::new)
 	 *              )
 	 *              // allows providing a custom matching strategy that requires the role "ROLE_CUSTOM"
@@ -2235,7 +1137,6 @@ public class ServerHttpSecurity {
 	 *      return http.build();
 	 *  }
 	 * </pre>
-	 *
 	 * @return the {@link AuthorizeExchangeSpec} to customize
 	 */
 	public AuthorizeExchangeSpec authorizeExchange() {
@@ -2253,7 +1154,7 @@ public class ServerHttpSecurity {
 	 *  public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
 	 *      http
 	 *          // ...
-	 *          .authorizeExchange(exchanges ->
+	 *          .authorizeExchange((exchanges) ->
 	 *              exchanges
 	 *                  // any URL that starts with /admin/ requires the role "ROLE_ADMIN"
 	 *                  .pathMatchers("/admin/**").hasRole("ADMIN")
@@ -2264,7 +1165,7 @@ public class ServerHttpSecurity {
 	 *                  .pathMatchers("/users/{username}").access((authentication, context) ->
 	 *                      authentication
 	 *                          .map(Authentication::getName)
-	 *                          .map(username -> username.equals(context.getVariables().get("username")))
+	 *                          .map((username) -> username.equals(context.getVariables().get("username")))
 	 *                          .map(AuthorizationDecision::new)
 	 *                  )
 	 *                  // allows providing a custom matching strategy that requires the role "ROLE_CUSTOM"
@@ -2275,9 +1176,8 @@ public class ServerHttpSecurity {
 	 *      return http.build();
 	 *  }
 	 * </pre>
-	 *
-	 * @param authorizeExchangeCustomizer the {@link Customizer} to provide more options for
-	 * the {@link AuthorizeExchangeSpec}
+	 * @param authorizeExchangeCustomizer the {@link Customizer} to provide more options
+	 * for the {@link AuthorizeExchangeSpec}
 	 * @return the {@link ServerHttpSecurity} to customize
 	 */
 	public ServerHttpSecurity authorizeExchange(Customizer<AuthorizeExchangeSpec> authorizeExchangeCustomizer) {
@@ -2323,7 +1223,7 @@ public class ServerHttpSecurity {
 	 *  public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
 	 *      http
 	 *          // ...
-	 *          .logout(logout ->
+	 *          .logout((logout) ->
 	 *              logout
 	 *                  // configures how log out is done
 	 *                  .logoutHandler(logoutHandler)
@@ -2335,9 +1235,8 @@ public class ServerHttpSecurity {
 	 *      return http.build();
 	 *  }
 	 * </pre>
-	 *
-	 * @param logoutCustomizer the {@link Customizer} to provide more options for
-	 * the {@link LogoutSpec}
+	 * @param logoutCustomizer the {@link Customizer} to provide more options for the
+	 * {@link LogoutSpec}
 	 * @return the {@link ServerHttpSecurity} to customize
 	 */
 	public ServerHttpSecurity logout(Customizer<LogoutSpec> logoutCustomizer) {
@@ -2349,8 +1248,9 @@ public class ServerHttpSecurity {
 	}
 
 	/**
-	 * Configures the request cache which is used when a flow is interrupted (i.e. due to requesting credentials) so
-	 * that the request can be replayed after authentication. An example configuration can be found below:
+	 * Configures the request cache which is used when a flow is interrupted (i.e. due to
+	 * requesting credentials) so that the request can be replayed after authentication.
+	 * An example configuration can be found below:
 	 *
 	 * <pre class="code">
 	 *  &#064;Bean
@@ -2363,7 +1263,6 @@ public class ServerHttpSecurity {
 	 *      return http.build();
 	 *  }
 	 * </pre>
-	 *
 	 * @return the {@link RequestCacheSpec} to customize
 	 */
 	public RequestCacheSpec requestCache() {
@@ -2371,15 +1270,16 @@ public class ServerHttpSecurity {
 	}
 
 	/**
-	 * Configures the request cache which is used when a flow is interrupted (i.e. due to requesting credentials) so
-	 * that the request can be replayed after authentication. An example configuration can be found below:
+	 * Configures the request cache which is used when a flow is interrupted (i.e. due to
+	 * requesting credentials) so that the request can be replayed after authentication.
+	 * An example configuration can be found below:
 	 *
 	 * <pre class="code">
 	 *  &#064;Bean
 	 *  public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
 	 *      http
 	 *          // ...
-	 *          .requestCache(requestCache ->
+	 *          .requestCache((requestCache) ->
 	 *              requestCache
 	 *                  // configures how the request is cached
 	 *                  .requestCache(customRequestCache)
@@ -2387,7 +1287,6 @@ public class ServerHttpSecurity {
 	 *      return http.build();
 	 *  }
 	 * </pre>
-	 *
 	 * @param requestCacheCustomizer the {@link Customizer} to provide more options for
 	 * the {@link RequestCacheSpec}
 	 * @return the {@link ServerHttpSecurity} to customize
@@ -2413,7 +1312,8 @@ public class ServerHttpSecurity {
 	 */
 	public SecurityWebFilterChain build() {
 		if (this.built != null) {
-			throw new IllegalStateException("This has already been built with the following stacktrace. " + buildToString());
+			throw new IllegalStateException(
+					"This has already been built with the following stacktrace. " + buildToString());
 		}
 		this.built = new RuntimeException("First Build Invocation").fillInStackTrace();
 		if (this.headers != null) {
@@ -2489,25 +1389,24 @@ public class ServerHttpSecurity {
 			this.logout.configure(this);
 		}
 		this.requestCache.configure(this);
-		this.addFilterAt(new SecurityContextServerWebExchangeWebFilter(), SecurityWebFiltersOrder.SECURITY_CONTEXT_SERVER_WEB_EXCHANGE);
+		this.addFilterAt(new SecurityContextServerWebExchangeWebFilter(),
+				SecurityWebFiltersOrder.SECURITY_CONTEXT_SERVER_WEB_EXCHANGE);
 		if (this.authorizeExchange != null) {
 			ServerAuthenticationEntryPoint authenticationEntryPoint = getAuthenticationEntryPoint();
 			ExceptionTranslationWebFilter exceptionTranslationWebFilter = new ExceptionTranslationWebFilter();
 			if (authenticationEntryPoint != null) {
-				exceptionTranslationWebFilter.setAuthenticationEntryPoint(
-					authenticationEntryPoint);
+				exceptionTranslationWebFilter.setAuthenticationEntryPoint(authenticationEntryPoint);
 			}
 			ServerAccessDeniedHandler accessDeniedHandler = getAccessDeniedHandler();
 			if (accessDeniedHandler != null) {
-				exceptionTranslationWebFilter.setAccessDeniedHandler(
-						accessDeniedHandler);
+				exceptionTranslationWebFilter.setAccessDeniedHandler(accessDeniedHandler);
 			}
 			this.addFilterAt(exceptionTranslationWebFilter, SecurityWebFiltersOrder.EXCEPTION_TRANSLATION);
 			this.authorizeExchange.configure(this);
 		}
 		AnnotationAwareOrderComparator.sort(this.webFilters);
 		List<WebFilter> sortedWebFilters = new ArrayList<>();
-		this.webFilters.forEach( f -> {
+		this.webFilters.forEach((f) -> {
 			if (f instanceof OrderedWebFilter) {
 				f = ((OrderedWebFilter) f).webFilter;
 			}
@@ -2518,8 +1417,8 @@ public class ServerHttpSecurity {
 	}
 
 	private String buildToString() {
-		try(StringWriter writer = new StringWriter()) {
-			try(PrintWriter printer = new PrintWriter(writer)) {
+		try (StringWriter writer = new StringWriter()) {
+			try (PrintWriter printer = new PrintWriter(writer)) {
 				printer.println();
 				printer.println();
 				this.built.printStackTrace(printer);
@@ -2527,8 +1426,9 @@ public class ServerHttpSecurity {
 				printer.println();
 				return writer.toString();
 			}
-		} catch(IOException e) {
-			throw new RuntimeException(e);
+		}
+		catch (IOException ex) {
+			throw new RuntimeException(ex);
 		}
 	}
 
@@ -2539,7 +1439,8 @@ public class ServerHttpSecurity {
 		if (this.defaultEntryPoints.size() == 1) {
 			return this.defaultEntryPoints.get(0).getEntryPoint();
 		}
-		DelegatingServerAuthenticationEntryPoint result = new DelegatingServerAuthenticationEntryPoint(this.defaultEntryPoints);
+		DelegatingServerAuthenticationEntryPoint result = new DelegatingServerAuthenticationEntryPoint(
+				this.defaultEntryPoints);
 		result.setDefaultEntryPoint(this.defaultEntryPoints.get(this.defaultEntryPoints.size() - 1).getEntryPoint());
 		return result;
 	}
@@ -2551,8 +1452,8 @@ public class ServerHttpSecurity {
 		if (this.defaultAccessDeniedHandlers.size() == 1) {
 			return this.defaultAccessDeniedHandlers.get(0).getAccessDeniedHandler();
 		}
-		ServerWebExchangeDelegatingServerAccessDeniedHandler result =
-				new ServerWebExchangeDelegatingServerAccessDeniedHandler(this.defaultAccessDeniedHandlers);
+		ServerWebExchangeDelegatingServerAccessDeniedHandler result = new ServerWebExchangeDelegatingServerAccessDeniedHandler(
+				this.defaultAccessDeniedHandlers);
 		result.setDefaultAccessDeniedHandler(this.defaultAccessDeniedHandlers
 				.get(this.defaultAccessDeniedHandlers.size() - 1).getAccessDeniedHandler());
 		return result;
@@ -2567,13 +1468,37 @@ public class ServerHttpSecurity {
 	}
 
 	private WebFilter securityContextRepositoryWebFilter() {
-		ServerSecurityContextRepository repository = this.securityContextRepository == null ?
-				new WebSessionServerSecurityContextRepository() : this.securityContextRepository;
+		ServerSecurityContextRepository repository = (this.securityContextRepository != null)
+				? this.securityContextRepository : new WebSessionServerSecurityContextRepository();
 		WebFilter result = new ReactorContextWebFilter(repository);
 		return new OrderedWebFilter(result, SecurityWebFiltersOrder.REACTOR_CONTEXT.getOrder());
 	}
 
-	protected ServerHttpSecurity() {}
+	private <T> T getBean(Class<T> beanClass) {
+		if (this.context == null) {
+			return null;
+		}
+		return this.context.getBean(beanClass);
+	}
+
+	private <T> T getBeanOrNull(Class<T> beanClass) {
+		return getBeanOrNull(ResolvableType.forClass(beanClass));
+	}
+
+	private <T> T getBeanOrNull(ResolvableType type) {
+		if (this.context == null) {
+			return null;
+		}
+		String[] names = this.context.getBeanNamesForType(type);
+		if (names.length == 1) {
+			return (T) this.context.getBean(names[0]);
+		}
+		return null;
+	}
+
+	protected void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
+		this.context = applicationContext;
+	}
 
 	/**
 	 * Configures authorization
@@ -2582,10 +1507,13 @@ public class ServerHttpSecurity {
 	 * @since 5.0
 	 * @see #authorizeExchange()
 	 */
-	public class AuthorizeExchangeSpec
-		extends AbstractServerWebExchangeMatcherRegistry<AuthorizeExchangeSpec.Access> {
-		private DelegatingReactiveAuthorizationManager.Builder managerBldr = DelegatingReactiveAuthorizationManager.builder();
+	public class AuthorizeExchangeSpec extends AbstractServerWebExchangeMatcherRegistry<AuthorizeExchangeSpec.Access> {
+
+		private DelegatingReactiveAuthorizationManager.Builder managerBldr = DelegatingReactiveAuthorizationManager
+				.builder();
+
 		private ServerWebExchangeMatcher matcher;
+
 		private boolean anyExchangeRegistered;
 
 		/**
@@ -2609,20 +1537,17 @@ public class ServerHttpSecurity {
 
 		@Override
 		protected Access registerMatcher(ServerWebExchangeMatcher matcher) {
-			if (this.anyExchangeRegistered) {
-				throw new IllegalStateException("Cannot register " + matcher + " which would be unreachable because anyExchange() has already been registered.");
-			}
-			if (this.matcher != null) {
-				throw new IllegalStateException("The matcher " + matcher + " does not have an access rule defined");
-			}
+			Assert.state(!this.anyExchangeRegistered, () -> "Cannot register " + matcher
+					+ " which would be unreachable because anyExchange() has already been registered.");
+			Assert.state(this.matcher == null,
+					() -> "The matcher " + matcher + " does not have an access rule defined");
 			this.matcher = matcher;
 			return new Access();
 		}
 
 		protected void configure(ServerHttpSecurity http) {
-			if (this.matcher != null) {
-				throw new IllegalStateException("The matcher " + this.matcher + " does not have an access rule defined");
-			}
+			Assert.state(this.matcher == null,
+					() -> "The matcher " + this.matcher + " does not have an access rule defined");
 			AuthorizationWebFilter result = new AuthorizationWebFilter(this.managerBldr.build());
 			http.addFilterAt(result, SecurityWebFiltersOrder.AUTHORIZATION);
 		}
@@ -2637,7 +1562,7 @@ public class ServerHttpSecurity {
 			 * @return the {@link AuthorizeExchangeSpec} to configure
 			 */
 			public AuthorizeExchangeSpec permitAll() {
-				return access( (a, e) -> Mono.just(new AuthorizationDecision(true)));
+				return access((a, e) -> Mono.just(new AuthorizationDecision(true)));
 			}
 
 			/**
@@ -2645,11 +1570,12 @@ public class ServerHttpSecurity {
 			 * @return the {@link AuthorizeExchangeSpec} to configure
 			 */
 			public AuthorizeExchangeSpec denyAll() {
-				return access( (a, e) -> Mono.just(new AuthorizationDecision(false)));
+				return access((a, e) -> Mono.just(new AuthorizationDecision(false)));
 			}
 
 			/**
-			 * Require a specific role. This is a shorcut for {@link #hasAuthority(String)}
+			 * Require a specific role. This is a shorcut for
+			 * {@link #hasAuthority(String)}
 			 * @param role the role (i.e. "USER" would require "ROLE_USER")
 			 * @return the {@link AuthorizeExchangeSpec} to configure
 			 */
@@ -2658,7 +1584,8 @@ public class ServerHttpSecurity {
 			}
 
 			/**
-			 * Require any specific role. This is a shortcut for {@link #hasAnyAuthority(String...)}
+			 * Require any specific role. This is a shortcut for
+			 * {@link #hasAnyAuthority(String...)}
 			 * @param roles the roles (i.e. "USER" would require "ROLE_USER")
 			 * @return the {@link AuthorizeExchangeSpec} to configure
 			 */
@@ -2668,7 +1595,8 @@ public class ServerHttpSecurity {
 
 			/**
 			 * Require a specific authority.
-			 * @param authority the authority to require (i.e. "USER" would require authority of "USER").
+			 * @param authority the authority to require (i.e. "USER" would require
+			 * authority of "USER").
 			 * @return the {@link AuthorizeExchangeSpec} to configure
 			 */
 			public AuthorizeExchangeSpec hasAuthority(String authority) {
@@ -2677,7 +1605,8 @@ public class ServerHttpSecurity {
 
 			/**
 			 * Require any authority
-			 * @param authorities the authorities to require (i.e. "USER" would require authority of "USER").
+			 * @param authorities the authorities to require (i.e. "USER" would require
+			 * authority of "USER").
 			 * @return the {@link AuthorizeExchangeSpec} to configure
 			 */
 			public AuthorizeExchangeSpec hasAnyAuthority(String... authorities) {
@@ -2699,12 +1628,13 @@ public class ServerHttpSecurity {
 			 */
 			public AuthorizeExchangeSpec access(ReactiveAuthorizationManager<AuthorizationContext> manager) {
 				AuthorizeExchangeSpec.this.managerBldr
-					.add(new ServerWebExchangeMatcherEntry<>(
-						AuthorizeExchangeSpec.this.matcher, manager));
+						.add(new ServerWebExchangeMatcherEntry<>(AuthorizeExchangeSpec.this.matcher, manager));
 				AuthorizeExchangeSpec.this.matcher = null;
 				return AuthorizeExchangeSpec.this;
 			}
+
 		}
+
 	}
 
 	/**
@@ -2715,15 +1645,17 @@ public class ServerHttpSecurity {
 	 * @see #redirectToHttps()
 	 */
 	public class HttpsRedirectSpec {
+
 		private ServerWebExchangeMatcher serverWebExchangeMatcher;
+
 		private PortMapper portMapper;
 
 		/**
 		 * Configures when this filter should redirect to https
 		 *
 		 * By default, the filter will redirect whenever an exchange's scheme is not https
-		 *
-		 * @param matchers the list of conditions that, when any are met, the filter should redirect to https
+		 * @param matchers the list of conditions that, when any are met, the filter
+		 * should redirect to https
 		 * @return the {@link HttpsRedirectSpec} for additional configuration
 		 */
 		public HttpsRedirectSpec httpsRedirectWhen(ServerWebExchangeMatcher... matchers) {
@@ -2735,21 +1667,17 @@ public class ServerHttpSecurity {
 		 * Configures when this filter should redirect to https
 		 *
 		 * By default, the filter will redirect whenever an exchange's scheme is not https
-		 *
 		 * @param when determines when to redirect to https
 		 * @return the {@link HttpsRedirectSpec} for additional configuration
 		 */
-		public HttpsRedirectSpec httpsRedirectWhen(
-				Function<ServerWebExchange, Boolean> when) {
-			ServerWebExchangeMatcher matcher = e -> when.apply(e) ?
-					ServerWebExchangeMatcher.MatchResult.match() :
-					ServerWebExchangeMatcher.MatchResult.notMatch();
+		public HttpsRedirectSpec httpsRedirectWhen(Function<ServerWebExchange, Boolean> when) {
+			ServerWebExchangeMatcher matcher = (e) -> when.apply(e) ? ServerWebExchangeMatcher.MatchResult.match()
+					: ServerWebExchangeMatcher.MatchResult.notMatch();
 			return httpsRedirectWhen(matcher);
 		}
 
 		/**
 		 * Configures a custom HTTPS port to redirect to
-		 *
 		 * @param portMapper the {@link PortMapper} to use
 		 * @return the {@link HttpsRedirectSpec} for additional configuration
 		 */
@@ -2776,73 +1704,76 @@ public class ServerHttpSecurity {
 		public ServerHttpSecurity and() {
 			return ServerHttpSecurity.this;
 		}
+
 	}
 
 	/**
-	 * Configures <a href="https://www.owasp.org/index.php/Cross-Site_Request_Forgery_(CSRF)_Prevention_Cheat_Sheet">CSRF Protection</a>
+	 * Configures <a href=
+	 * "https://www.owasp.org/index.php/Cross-Site_Request_Forgery_(CSRF)_Prevention_Cheat_Sheet">CSRF
+	 * Protection</a>
 	 *
 	 * @author Rob Winch
 	 * @since 5.0
 	 * @see #csrf()
 	 */
-	public class CsrfSpec {
+	public final class CsrfSpec {
+
+		private CsrfSpec() {
+		}
+
 		private CsrfWebFilter filter = new CsrfWebFilter();
+
 		private ServerCsrfTokenRepository csrfTokenRepository = new WebSessionServerCsrfTokenRepository();
 
 		private boolean specifiedRequireCsrfProtectionMatcher;
 
 		/**
-		 * Configures the {@link ServerAccessDeniedHandler} used when a CSRF token is invalid. Default is
-		 * to send an {@link org.springframework.http.HttpStatus#FORBIDDEN}.
-		 *
+		 * Configures the {@link ServerAccessDeniedHandler} used when a CSRF token is
+		 * invalid. Default is to send an
+		 * {@link org.springframework.http.HttpStatus#FORBIDDEN}.
 		 * @param accessDeniedHandler the access denied handler.
 		 * @return the {@link CsrfSpec} for additional configuration
 		 */
-		public CsrfSpec accessDeniedHandler(
-			ServerAccessDeniedHandler accessDeniedHandler) {
+		public CsrfSpec accessDeniedHandler(ServerAccessDeniedHandler accessDeniedHandler) {
 			this.filter.setAccessDeniedHandler(accessDeniedHandler);
 			return this;
 		}
 
 		/**
-		 * Configures the {@link ServerCsrfTokenRepository} used to persist the CSRF Token. Default is
+		 * Configures the {@link ServerCsrfTokenRepository} used to persist the CSRF
+		 * Token. Default is
 		 * {@link org.springframework.security.web.server.csrf.WebSessionServerCsrfTokenRepository}.
-		 *
 		 * @param csrfTokenRepository the repository to use
 		 * @return the {@link CsrfSpec} for additional configuration
 		 */
-		public CsrfSpec csrfTokenRepository(
-			ServerCsrfTokenRepository csrfTokenRepository) {
+		public CsrfSpec csrfTokenRepository(ServerCsrfTokenRepository csrfTokenRepository) {
 			this.csrfTokenRepository = csrfTokenRepository;
 			return this;
 		}
 
 		/**
-		 * Configures the {@link ServerWebExchangeMatcher} used to determine when CSRF protection is enabled. Default is
-		 * PUT, POST, DELETE requests.
-		 *
+		 * Configures the {@link ServerWebExchangeMatcher} used to determine when CSRF
+		 * protection is enabled. Default is PUT, POST, DELETE requests.
 		 * @param requireCsrfProtectionMatcher the matcher to use
 		 * @return the {@link CsrfSpec} for additional configuration
 		 */
-		public CsrfSpec requireCsrfProtectionMatcher(
-			ServerWebExchangeMatcher requireCsrfProtectionMatcher) {
+		public CsrfSpec requireCsrfProtectionMatcher(ServerWebExchangeMatcher requireCsrfProtectionMatcher) {
 			this.filter.setRequireCsrfProtectionMatcher(requireCsrfProtectionMatcher);
 			this.specifiedRequireCsrfProtectionMatcher = true;
 			return this;
 		}
 
 		/**
-		 * Specifies if {@link CsrfWebFilter} should try to resolve the actual CSRF token from the body of multipart
-		 * data requests.
-		 *
-		 * @param enabled true if should read from multipart form body, else false. Default is false
+		 * Specifies if {@link CsrfWebFilter} should try to resolve the actual CSRF token
+		 * from the body of multipart data requests.
+		 * @param enabled true if should read from multipart form body, else false.
+		 * Default is false
 		 * @return the {@link CsrfSpec} for additional configuration
 		 */
 		public CsrfSpec tokenFromMultipartDataEnabled(boolean enabled) {
 			this.filter.setTokenFromMultipartDataEnabled(enabled);
 			return this;
 		}
-
 
 		/**
 		 * Allows method chaining to continue configuring the {@link ServerHttpSecurity}
@@ -2853,8 +1784,8 @@ public class ServerHttpSecurity {
 		}
 
 		/**
-		 * Disables CSRF Protection. Disabling CSRF Protection is only recommended when the application is never used
-		 * within a browser.
+		 * Disables CSRF Protection. Disabling CSRF Protection is only recommended when
+		 * the application is never used within a browser.
 		 * @return the {@link ServerHttpSecurity} to continue configuring
 		 */
 		public ServerHttpSecurity disable() {
@@ -2866,13 +1797,13 @@ public class ServerHttpSecurity {
 			if (this.csrfTokenRepository != null) {
 				this.filter.setCsrfTokenRepository(this.csrfTokenRepository);
 				if (ServerHttpSecurity.this.logout != null) {
-					ServerHttpSecurity.this.logout.addLogoutHandler(new CsrfServerLogoutHandler(this.csrfTokenRepository));
+					ServerHttpSecurity.this.logout
+							.addLogoutHandler(new CsrfServerLogoutHandler(this.csrfTokenRepository));
 				}
 			}
 			http.addFilterAt(this.filter, SecurityWebFiltersOrder.CSRF);
 		}
 
-		private CsrfSpec() {}
 	}
 
 	/**
@@ -2882,7 +1813,10 @@ public class ServerHttpSecurity {
 	 * @since 5.0
 	 * @see #exceptionHandling()
 	 */
-	public class ExceptionHandlingSpec {
+	public final class ExceptionHandlingSpec {
+
+		private ExceptionHandlingSpec() {
+		}
 
 		/**
 		 * Configures what to do when the application request authentication
@@ -2895,7 +1829,8 @@ public class ServerHttpSecurity {
 		}
 
 		/**
-		 * Configures what to do when an authenticated user does not hold a required authority
+		 * Configures what to do when an authenticated user does not hold a required
+		 * authority
 		 * @param accessDeniedHandler the access denied handler to use
 		 * @return the {@link ExceptionHandlingSpec} to configure
 		 *
@@ -2914,19 +1849,22 @@ public class ServerHttpSecurity {
 			return ServerHttpSecurity.this;
 		}
 
-		private ExceptionHandlingSpec() {}
 	}
 
 	/**
-	 * Configures the request cache which is used when a flow is interrupted (i.e. due to requesting credentials) so
-	 * that the request can be replayed after authentication.
+	 * Configures the request cache which is used when a flow is interrupted (i.e. due to
+	 * requesting credentials) so that the request can be replayed after authentication.
 	 *
 	 * @author Rob Winch
 	 * @since 5.0
 	 * @see #requestCache()
 	 */
-	public class RequestCacheSpec {
+	public final class RequestCacheSpec {
+
 		private ServerRequestCache requestCache = new WebSessionServerRequestCache();
+
+		private RequestCacheSpec() {
+		}
 
 		/**
 		 * Configures the cache used
@@ -2962,7 +1900,6 @@ public class ServerHttpSecurity {
 			return and();
 		}
 
-		private RequestCacheSpec() {}
 	}
 
 	/**
@@ -2972,17 +1909,20 @@ public class ServerHttpSecurity {
 	 * @since 5.0
 	 * @see #httpBasic()
 	 */
-	public class HttpBasicSpec {
+	public final class HttpBasicSpec {
+
 		private ReactiveAuthenticationManager authenticationManager;
 
 		private ServerSecurityContextRepository securityContextRepository;
 
 		private ServerAuthenticationEntryPoint entryPoint = new HttpBasicServerAuthenticationEntryPoint();
 
+		private HttpBasicSpec() {
+		}
+
 		/**
 		 * The {@link ReactiveAuthenticationManager} used to authenticate. Defaults to
 		 * {@link ServerHttpSecurity#authenticationManager(ReactiveAuthenticationManager)}.
-		 *
 		 * @param authenticationManager the authentication manager to use
 		 * @return the {@link HttpBasicSpec} to continue configuring
 		 */
@@ -2992,11 +1932,11 @@ public class ServerHttpSecurity {
 		}
 
 		/**
-		 * The {@link ServerSecurityContextRepository} used to save the {@code Authentication}. Defaults to
-		 * {@link NoOpServerSecurityContextRepository}. For the {@code SecurityContext} to be loaded on subsequent
-		 * requests the {@link ReactorContextWebFilter} must be configured to be able to load the value (they are not
-		 * implicitly linked).
-		 *
+		 * The {@link ServerSecurityContextRepository} used to save the
+		 * {@code Authentication}. Defaults to
+		 * {@link NoOpServerSecurityContextRepository}. For the {@code SecurityContext} to
+		 * be loaded on subsequent requests the {@link ReactorContextWebFilter} must be
+		 * configured to be able to load the value (they are not implicitly linked).
 		 * @param securityContextRepository the repository to use
 		 * @return the {@link HttpBasicSpec} to continue configuring
 		 */
@@ -3007,12 +1947,13 @@ public class ServerHttpSecurity {
 
 		/**
 		 * Allows easily setting the entry point.
-		 * @param authenticationEntryPoint the {@link ServerAuthenticationEntryPoint} to use
+		 * @param authenticationEntryPoint the {@link ServerAuthenticationEntryPoint} to
+		 * use
 		 * @return {@link HttpBasicSpec} for additional customization
 		 * @since 5.2.0
 		 * @author Ankur Pathak
 		 */
-		public HttpBasicSpec authenticationEntryPoint(ServerAuthenticationEntryPoint authenticationEntryPoint){
+		public HttpBasicSpec authenticationEntryPoint(ServerAuthenticationEntryPoint authenticationEntryPoint) {
 			Assert.notNull(authenticationEntryPoint, "authenticationEntryPoint cannot be null");
 			this.entryPoint = authenticationEntryPoint;
 			return this;
@@ -3037,21 +1978,19 @@ public class ServerHttpSecurity {
 
 		protected void configure(ServerHttpSecurity http) {
 			MediaTypeServerWebExchangeMatcher restMatcher = new MediaTypeServerWebExchangeMatcher(
-				MediaType.APPLICATION_ATOM_XML,
-				MediaType.APPLICATION_FORM_URLENCODED, MediaType.APPLICATION_JSON,
-				MediaType.APPLICATION_OCTET_STREAM, MediaType.APPLICATION_XML,
-				MediaType.MULTIPART_FORM_DATA, MediaType.TEXT_XML);
+					MediaType.APPLICATION_ATOM_XML, MediaType.APPLICATION_FORM_URLENCODED, MediaType.APPLICATION_JSON,
+					MediaType.APPLICATION_OCTET_STREAM, MediaType.APPLICATION_XML, MediaType.MULTIPART_FORM_DATA,
+					MediaType.TEXT_XML);
 			restMatcher.setIgnoredMediaTypes(Collections.singleton(MediaType.ALL));
 			ServerHttpSecurity.this.defaultEntryPoints.add(new DelegateEntry(restMatcher, this.entryPoint));
-			AuthenticationWebFilter authenticationFilter = new AuthenticationWebFilter(
-				this.authenticationManager);
-			authenticationFilter.setAuthenticationFailureHandler(new ServerAuthenticationEntryPointFailureHandler(this.entryPoint));
+			AuthenticationWebFilter authenticationFilter = new AuthenticationWebFilter(this.authenticationManager);
+			authenticationFilter
+					.setAuthenticationFailureHandler(new ServerAuthenticationEntryPointFailureHandler(this.entryPoint));
 			authenticationFilter.setAuthenticationConverter(new ServerHttpBasicAuthenticationConverter());
 			authenticationFilter.setSecurityContextRepository(this.securityContextRepository);
 			http.addFilterAt(authenticationFilter, SecurityWebFiltersOrder.HTTP_BASIC);
 		}
 
-		private HttpBasicSpec() {}
 	}
 
 	/**
@@ -3061,8 +2000,10 @@ public class ServerHttpSecurity {
 	 * @since 5.0
 	 * @see #formLogin()
 	 */
-	public class FormLoginSpec {
-		private final RedirectServerAuthenticationSuccessHandler defaultSuccessHandler = new RedirectServerAuthenticationSuccessHandler("/");
+	public final class FormLoginSpec {
+
+		private final RedirectServerAuthenticationSuccessHandler defaultSuccessHandler = new RedirectServerAuthenticationSuccessHandler(
+				"/");
 
 		private RedirectServerAuthenticationEntryPoint defaultEntryPoint;
 
@@ -3080,10 +2021,12 @@ public class ServerHttpSecurity {
 
 		private ServerAuthenticationSuccessHandler authenticationSuccessHandler = this.defaultSuccessHandler;
 
+		private FormLoginSpec() {
+		}
+
 		/**
 		 * The {@link ReactiveAuthenticationManager} used to authenticate. Defaults to
 		 * {@link ServerHttpSecurity#authenticationManager(ReactiveAuthenticationManager)}.
-		 *
 		 * @param authenticationManager the authentication manager to use
 		 * @return the {@link FormLoginSpec} to continue configuring
 		 */
@@ -3093,29 +2036,32 @@ public class ServerHttpSecurity {
 		}
 
 		/**
-		 * The {@link ServerAuthenticationSuccessHandler} used after authentication success. Defaults to
-		 * {@link RedirectServerAuthenticationSuccessHandler}.
+		 * The {@link ServerAuthenticationSuccessHandler} used after authentication
+		 * success. Defaults to {@link RedirectServerAuthenticationSuccessHandler}.
 		 * @param authenticationSuccessHandler the success handler to use
 		 * @return the {@link FormLoginSpec} to continue configuring
 		 */
 		public FormLoginSpec authenticationSuccessHandler(
-			ServerAuthenticationSuccessHandler authenticationSuccessHandler) {
+				ServerAuthenticationSuccessHandler authenticationSuccessHandler) {
 			Assert.notNull(authenticationSuccessHandler, "authenticationSuccessHandler cannot be null");
 			this.authenticationSuccessHandler = authenticationSuccessHandler;
 			return this;
 		}
 
 		/**
-		 * Configures the log in page to redirect to, the authentication failure page, and when authentication is
-		 * performed. The default is that Spring Security will generate a log in page at "/login" and a log out page at
-		 * "/logout". If this is customized:
+		 * Configures the log in page to redirect to, the authentication failure page, and
+		 * when authentication is performed. The default is that Spring Security will
+		 * generate a log in page at "/login" and a log out page at "/logout". If this is
+		 * customized:
 		 * <ul>
 		 * <li>The default log in & log out page are no longer provided</li>
 		 * <li>The application must render a log in page at the provided URL</li>
-		 * <li>The application must render an authentication error page at the provided URL + "?error"</li>
+		 * <li>The application must render an authentication error page at the provided
+		 * URL + "?error"</li>
 		 * <li>Authentication will occur for POST to the provided URL</li>
 		 * </ul>
-		 * @param loginPage the url to redirect to which provides a form to log in (i.e. "/login")
+		 * @param loginPage the url to redirect to which provides a form to log in (i.e.
+		 * "/login")
 		 * @return the {@link FormLoginSpec} to continue configuring
 		 * @see #authenticationEntryPoint(ServerAuthenticationEntryPoint)
 		 * @see #requiresAuthenticationMatcher(ServerWebExchangeMatcher)
@@ -3128,7 +2074,8 @@ public class ServerHttpSecurity {
 				this.requiresAuthenticationMatcher = ServerWebExchangeMatchers.pathMatchers(HttpMethod.POST, loginPage);
 			}
 			if (this.authenticationFailureHandler == null) {
-				this.authenticationFailureHandler = new RedirectServerAuthenticationFailureHandler(loginPage + "?error");
+				this.authenticationFailureHandler = new RedirectServerAuthenticationFailureHandler(
+						loginPage + "?error");
 			}
 			return this;
 		}
@@ -3157,22 +2104,25 @@ public class ServerHttpSecurity {
 		}
 
 		/**
-		 * Configures how a failed authentication is handled. The default is to redirect to "/login?error".
+		 * Configures how a failed authentication is handled. The default is to redirect
+		 * to "/login?error".
 		 * @param authenticationFailureHandler the handler to use
 		 * @return the {@link FormLoginSpec} to continue configuring
 		 * @see #loginPage(String)
 		 */
-		public FormLoginSpec authenticationFailureHandler(ServerAuthenticationFailureHandler authenticationFailureHandler) {
+		public FormLoginSpec authenticationFailureHandler(
+				ServerAuthenticationFailureHandler authenticationFailureHandler) {
 			this.authenticationFailureHandler = authenticationFailureHandler;
 			return this;
 		}
 
 		/**
-		 * The {@link ServerSecurityContextRepository} used to save the {@code Authentication}. Defaults to
-		 * {@link WebSessionServerSecurityContextRepository}. For the {@code SecurityContext} to be loaded on subsequent
-		 * requests the {@link ReactorContextWebFilter} must be configured to be able to load the value (they are not
-		 * implicitly linked).
-		 *
+		 * The {@link ServerSecurityContextRepository} used to save the
+		 * {@code Authentication}. Defaults to
+		 * {@link WebSessionServerSecurityContextRepository}. For the
+		 * {@code SecurityContext} to be loaded on subsequent requests the
+		 * {@link ReactorContextWebFilter} must be configured to be able to load the value
+		 * (they are not implicitly linked).
 		 * @param securityContextRepository the repository to use
 		 * @return the {@link FormLoginSpec} to continue configuring
 		 */
@@ -3202,7 +2152,8 @@ public class ServerHttpSecurity {
 			if (this.authenticationEntryPoint == null) {
 				this.isEntryPointExplicit = false;
 				loginPage("/login");
-			} else {
+			}
+			else {
 				this.isEntryPointExplicit = true;
 			}
 			if (http.requestCache != null) {
@@ -3212,12 +2163,11 @@ public class ServerHttpSecurity {
 					this.defaultEntryPoint.setRequestCache(requestCache);
 				}
 			}
-			MediaTypeServerWebExchangeMatcher htmlMatcher = new MediaTypeServerWebExchangeMatcher(
-				MediaType.TEXT_HTML);
+			MediaTypeServerWebExchangeMatcher htmlMatcher = new MediaTypeServerWebExchangeMatcher(MediaType.TEXT_HTML);
 			htmlMatcher.setIgnoredMediaTypes(Collections.singleton(MediaType.ALL));
-			ServerHttpSecurity.this.defaultEntryPoints.add(0, new DelegateEntry(htmlMatcher, this.authenticationEntryPoint));
-			AuthenticationWebFilter authenticationFilter = new AuthenticationWebFilter(
-				this.authenticationManager);
+			ServerHttpSecurity.this.defaultEntryPoints.add(0,
+					new DelegateEntry(htmlMatcher, this.authenticationEntryPoint));
+			AuthenticationWebFilter authenticationFilter = new AuthenticationWebFilter(this.authenticationManager);
 			authenticationFilter.setRequiresAuthenticationMatcher(this.requiresAuthenticationMatcher);
 			authenticationFilter.setAuthenticationFailureHandler(this.authenticationFailureHandler);
 			authenticationFilter.setAuthenticationConverter(new ServerFormLoginAuthenticationConverter());
@@ -3226,11 +2176,13 @@ public class ServerHttpSecurity {
 			http.addFilterAt(authenticationFilter, SecurityWebFiltersOrder.FORM_LOGIN);
 		}
 
-		private FormLoginSpec() {
-		}
 	}
 
-	private class LoginPageSpec {
+	private final class LoginPageSpec {
+
+		private LoginPageSpec() {
+		}
+
 		protected void configure(ServerHttpSecurity http) {
 			if (http.authenticationEntryPoint != null) {
 				return;
@@ -3256,7 +2208,6 @@ public class ServerHttpSecurity {
 			}
 		}
 
-		private LoginPageSpec() {}
 	}
 
 	/**
@@ -3266,7 +2217,8 @@ public class ServerHttpSecurity {
 	 * @since 5.0
 	 * @see #headers()
 	 */
-	public class HeaderSpec {
+	public final class HeaderSpec {
+
 		private final List<ServerHttpHeadersWriter> writers;
 
 		private CacheControlServerHttpHeadersWriter cacheControl = new CacheControlServerHttpHeadersWriter();
@@ -3281,9 +2233,17 @@ public class ServerHttpSecurity {
 
 		private FeaturePolicyServerHttpHeadersWriter featurePolicy = new FeaturePolicyServerHttpHeadersWriter();
 
+		private PermissionsPolicyServerHttpHeadersWriter permissionsPolicy = new PermissionsPolicyServerHttpHeadersWriter();
+
 		private ContentSecurityPolicyServerHttpHeadersWriter contentSecurityPolicy = new ContentSecurityPolicyServerHttpHeadersWriter();
 
 		private ReferrerPolicyServerHttpHeadersWriter referrerPolicy = new ReferrerPolicyServerHttpHeadersWriter();
+
+		private HeaderSpec() {
+			this.writers = new ArrayList<>(Arrays.asList(this.cacheControl, this.contentTypeOptions, this.hsts,
+					this.frameOptions, this.xss, this.featurePolicy, this.permissionsPolicy, this.contentSecurityPolicy,
+					this.referrerPolicy));
+		}
 
 		/**
 		 * Allows method chaining to continue configuring the {@link ServerHttpSecurity}
@@ -3312,9 +2272,8 @@ public class ServerHttpSecurity {
 
 		/**
 		 * Configures cache control headers
-		 *
-		 * @param cacheCustomizer the {@link Customizer} to provide more options for
-		 * the {@link CacheSpec}
+		 * @param cacheCustomizer the {@link Customizer} to provide more options for the
+		 * {@link CacheSpec}
 		 * @return the {@link HeaderSpec} to customize
 		 */
 		public HeaderSpec cache(Customizer<CacheSpec> cacheCustomizer) {
@@ -3332,9 +2291,8 @@ public class ServerHttpSecurity {
 
 		/**
 		 * Configures content type response headers
-		 *
-		 * @param contentTypeOptionsCustomizer the {@link Customizer} to provide more options for
-		 * the {@link ContentTypeOptionsSpec}
+		 * @param contentTypeOptionsCustomizer the {@link Customizer} to provide more
+		 * options for the {@link ContentTypeOptionsSpec}
 		 * @return the {@link HeaderSpec} to customize
 		 */
 		public HeaderSpec contentTypeOptions(Customizer<ContentTypeOptionsSpec> contentTypeOptionsCustomizer) {
@@ -3352,9 +2310,8 @@ public class ServerHttpSecurity {
 
 		/**
 		 * Configures frame options response headers
-		 *
-		 * @param frameOptionsCustomizer the {@link Customizer} to provide more options for
-		 * the {@link FrameOptionsSpec}
+		 * @param frameOptionsCustomizer the {@link Customizer} to provide more options
+		 * for the {@link FrameOptionsSpec}
 		 * @return the {@link HeaderSpec} to customize
 		 */
 		public HeaderSpec frameOptions(Customizer<FrameOptionsSpec> frameOptionsCustomizer) {
@@ -3364,8 +2321,8 @@ public class ServerHttpSecurity {
 
 		/**
 		 * Configures custom headers writer
-		 *
-		 * @param serverHttpHeadersWriter the {@link ServerHttpHeadersWriter} to provide custom headers writer
+		 * @param serverHttpHeadersWriter the {@link ServerHttpHeadersWriter} to provide
+		 * custom headers writer
 		 * @return the {@link HeaderSpec} to customize
 		 * @since 5.3.0
 		 * @author Ankur Pathak
@@ -3386,9 +2343,8 @@ public class ServerHttpSecurity {
 
 		/**
 		 * Configures the Strict Transport Security response headers
-		 *
-		 * @param hstsCustomizer the {@link Customizer} to provide more options for
-		 * the {@link HstsSpec}
+		 * @param hstsCustomizer the {@link Customizer} to provide more options for the
+		 * {@link HstsSpec}
 		 * @return the {@link HeaderSpec} to customize
 		 */
 		public HeaderSpec hsts(Customizer<HstsSpec> hstsCustomizer) {
@@ -3412,9 +2368,8 @@ public class ServerHttpSecurity {
 
 		/**
 		 * Configures x-xss-protection response header.
-		 *
-		 * @param xssProtectionCustomizer the {@link Customizer} to provide more options for
-		 * the {@link XssProtectionSpec}
+		 * @param xssProtectionCustomizer the {@link Customizer} to provide more options
+		 * for the {@link XssProtectionSpec}
 		 * @return the {@link HeaderSpec} to customize
 		 */
 		public HeaderSpec xssProtection(Customizer<XssProtectionSpec> xssProtectionCustomizer) {
@@ -3433,9 +2388,8 @@ public class ServerHttpSecurity {
 
 		/**
 		 * Configures {@code Content-Security-Policy} response header.
-		 *
-		 * @param contentSecurityPolicyCustomizer the {@link Customizer} to provide more options for
-		 * the {@link ContentSecurityPolicySpec}
+		 * @param contentSecurityPolicyCustomizer the {@link Customizer} to provide more
+		 * options for the {@link ContentSecurityPolicySpec}
 		 * @return the {@link HeaderSpec} to customize
 		 */
 		public HeaderSpec contentSecurityPolicy(Customizer<ContentSecurityPolicySpec> contentSecurityPolicyCustomizer) {
@@ -3445,11 +2399,30 @@ public class ServerHttpSecurity {
 
 		/**
 		 * Configures {@code Feature-Policy} response header.
-		 * @param policyDirectives the policy directive(s)
+		 * @param policyDirectives the policy
 		 * @return the {@link FeaturePolicySpec} to configure
 		 */
 		public FeaturePolicySpec featurePolicy(String policyDirectives) {
 			return new FeaturePolicySpec(policyDirectives);
+		}
+
+		/**
+		 * Configures {@code Permissions-Policy} response header.
+		 * @return the {@link PermissionsPolicySpec} to configure
+		 */
+		public PermissionsPolicySpec permissionsPolicy() {
+			return new PermissionsPolicySpec();
+		}
+
+		/**
+		 * Configures {@code Permissions-Policy} response header.
+		 * @param permissionsPolicyCustomizer the {@link Customizer} to provide more
+		 * options for the {@link PermissionsPolicySpec}
+		 * @return the {@link HeaderSpec} to customize
+		 */
+		public HeaderSpec permissionsPolicy(Customizer<PermissionsPolicySpec> permissionsPolicyCustomizer) {
+			permissionsPolicyCustomizer.customize(new PermissionsPolicySpec());
+			return this;
 		}
 
 		/**
@@ -3471,9 +2444,8 @@ public class ServerHttpSecurity {
 
 		/**
 		 * Configures {@code Referrer-Policy} response header.
-		 *
-		 * @param referrerPolicyCustomizer the {@link Customizer} to provide more options for
-		 * the {@link ReferrerPolicySpec}
+		 * @param referrerPolicyCustomizer the {@link Customizer} to provide more options
+		 * for the {@link ReferrerPolicySpec}
 		 * @return the {@link HeaderSpec} to customize
 		 */
 		public HeaderSpec referrerPolicy(Customizer<ReferrerPolicySpec> referrerPolicyCustomizer) {
@@ -3483,9 +2455,14 @@ public class ServerHttpSecurity {
 
 		/**
 		 * Configures cache control headers
+		 *
 		 * @see #cache()
 		 */
-		public class CacheSpec {
+		public final class CacheSpec {
+
+			private CacheSpec() {
+			}
+
 			/**
 			 * Disables cache control response headers
 			 * @return the {@link HeaderSpec} to configure
@@ -3495,14 +2472,18 @@ public class ServerHttpSecurity {
 				return HeaderSpec.this;
 			}
 
-			private CacheSpec() {}
 		}
 
 		/**
 		 * The content type headers
+		 *
 		 * @see #contentTypeOptions()
 		 */
-		public class ContentTypeOptionsSpec {
+		public final class ContentTypeOptionsSpec {
+
+			private ContentTypeOptionsSpec() {
+			}
+
 			/**
 			 * Disables the content type options response header
 			 * @return the {@link HeaderSpec} to configure
@@ -3512,14 +2493,18 @@ public class ServerHttpSecurity {
 				return HeaderSpec.this;
 			}
 
-			private ContentTypeOptionsSpec() {}
 		}
 
 		/**
 		 * Configures frame options response header
+		 *
 		 * @see #frameOptions()
 		 */
-		public class FrameOptionsSpec {
+		public final class FrameOptionsSpec {
+
+			private FrameOptionsSpec() {
+			}
+
 			/**
 			 * The mode to configure. Default is
 			 * {@link org.springframework.security.web.server.header.XFrameOptionsServerHttpHeadersWriter.Mode#DENY}
@@ -3532,7 +2517,8 @@ public class ServerHttpSecurity {
 			}
 
 			/**
-			 * Allows method chaining to continue configuring the {@link ServerHttpSecurity}
+			 * Allows method chaining to continue configuring the
+			 * {@link ServerHttpSecurity}
 			 * @return the {@link HeaderSpec} to continue configuring
 			 */
 			private HeaderSpec and() {
@@ -3548,14 +2534,18 @@ public class ServerHttpSecurity {
 				return and();
 			}
 
-			private FrameOptionsSpec() {}
 		}
 
 		/**
 		 * Configures Strict Transport Security response header
+		 *
 		 * @see #hsts()
 		 */
-		public class HstsSpec {
+		public final class HstsSpec {
+
+			private HstsSpec() {
+			}
+
 			/**
 			 * Configures the max age. Default is one year.
 			 * @param maxAge the max age
@@ -3582,10 +2572,9 @@ public class ServerHttpSecurity {
 			 * </p>
 			 *
 			 * <p>
-			 * See <a href="https://hstspreload.org/">Website hstspreload.org</a>
-			 * for additional details.
+			 * See <a href="https://hstspreload.org/">Website hstspreload.org</a> for
+			 * additional details.
 			 * </p>
-			 *
 			 * @param preload if subdomains should be included
 			 * @return the {@link HstsSpec} to continue configuring
 			 * @since 5.2.0
@@ -3597,7 +2586,8 @@ public class ServerHttpSecurity {
 			}
 
 			/**
-			 * Allows method chaining to continue configuring the {@link ServerHttpSecurity}
+			 * Allows method chaining to continue configuring the
+			 * {@link ServerHttpSecurity}
 			 * @return the {@link HeaderSpec} to continue configuring
 			 */
 			public HeaderSpec and() {
@@ -3613,14 +2603,18 @@ public class ServerHttpSecurity {
 				return HeaderSpec.this;
 			}
 
-			private HstsSpec() {}
 		}
 
 		/**
 		 * Configures x-xss-protection response header
+		 *
 		 * @see #xssProtection()
 		 */
-		public class XssProtectionSpec {
+		public final class XssProtectionSpec {
+
+			private XssProtectionSpec() {
+			}
+
 			/**
 			 * Disables the x-xss-protection response header
 			 * @return the {@link HeaderSpec} to continue configuring
@@ -3630,21 +2624,26 @@ public class ServerHttpSecurity {
 				return HeaderSpec.this;
 			}
 
-			private XssProtectionSpec() {}
 		}
 
 		/**
 		 * Configures {@code Content-Security-Policy} response header.
 		 *
-		 * @see #contentSecurityPolicy(String)
 		 * @since 5.1
+		 * @see #contentSecurityPolicy(String)
 		 */
-		public class ContentSecurityPolicySpec {
+		public final class ContentSecurityPolicySpec {
+
 			private static final String DEFAULT_SRC_SELF_POLICY = "default-src 'self'";
 
+			private ContentSecurityPolicySpec() {
+				HeaderSpec.this.contentSecurityPolicy.setPolicyDirectives(DEFAULT_SRC_SELF_POLICY);
+			}
+
 			/**
-			 * Whether to include the {@code Content-Security-Policy-Report-Only} header in
-			 * the response. Otherwise, defaults to the {@code Content-Security-Policy} header.
+			 * Whether to include the {@code Content-Security-Policy-Report-Only} header
+			 * in the response. Otherwise, defaults to the {@code Content-Security-Policy}
+			 * header.
 			 * @param reportOnly whether to only report policy violations
 			 * @return the {@link HeaderSpec} to continue configuring
 			 */
@@ -3655,7 +2654,6 @@ public class ServerHttpSecurity {
 
 			/**
 			 * Sets the security policy directive(s) to be used in the response header.
-			 *
 			 * @param policyDirectives the security policy directive(s)
 			 * @return the {@link HeaderSpec} to continue configuring
 			 */
@@ -3677,18 +2675,19 @@ public class ServerHttpSecurity {
 				HeaderSpec.this.contentSecurityPolicy.setPolicyDirectives(policyDirectives);
 			}
 
-			private ContentSecurityPolicySpec() {
-				HeaderSpec.this.contentSecurityPolicy.setPolicyDirectives(DEFAULT_SRC_SELF_POLICY);
-			}
 		}
 
 		/**
 		 * Configures {@code Feature-Policy} response header.
 		 *
-		 * @see #featurePolicy(String)
 		 * @since 5.1
+		 * @see #featurePolicy(String)
 		 */
-		public class FeaturePolicySpec {
+		public final class FeaturePolicySpec {
+
+			private FeaturePolicySpec(String policyDirectives) {
+				HeaderSpec.this.featurePolicy.setPolicyDirectives(policyDirectives);
+			}
 
 			/**
 			 * Allows method chaining to continue configuring the
@@ -3699,8 +2698,36 @@ public class ServerHttpSecurity {
 				return HeaderSpec.this;
 			}
 
-			private FeaturePolicySpec(String policyDirectives) {
-				HeaderSpec.this.featurePolicy.setPolicyDirectives(policyDirectives);
+		}
+
+		/**
+		 * Configures {@code Permissions-Policy} response header.
+		 *
+		 * @since 5.5
+		 * @see #permissionsPolicy()
+		 */
+		public final class PermissionsPolicySpec {
+
+			private PermissionsPolicySpec() {
+			}
+
+			/**
+			 * Sets the policy to be used in the response header.
+			 * @param policy a permissions policy
+			 * @return the {@link PermissionsPolicySpec} to continue configuring
+			 */
+			public PermissionsPolicySpec policy(String policy) {
+				HeaderSpec.this.permissionsPolicy.setPolicy(policy);
+				return this;
+			}
+
+			/**
+			 * Allows method chaining to continue configuring the
+			 * {@link ServerHttpSecurity}.
+			 * @return the {@link HeaderSpec} to continue configuring
+			 */
+			public HeaderSpec and() {
+				return HeaderSpec.this;
 			}
 
 		}
@@ -3708,15 +2735,21 @@ public class ServerHttpSecurity {
 		/**
 		 * Configures {@code Referrer-Policy} response header.
 		 *
+		 * @since 5.1
 		 * @see #referrerPolicy()
 		 * @see #referrerPolicy(ReferrerPolicy)
-		 * @since 5.1
 		 */
-		public class ReferrerPolicySpec {
+		public final class ReferrerPolicySpec {
+
+			private ReferrerPolicySpec() {
+			}
+
+			private ReferrerPolicySpec(ReferrerPolicy referrerPolicy) {
+				HeaderSpec.this.referrerPolicy.setPolicy(referrerPolicy);
+			}
 
 			/**
 			 * Sets the policy to be used in the response header.
-			 *
 			 * @param referrerPolicy a referrer policy
 			 * @return the {@link ReferrerPolicySpec} to continue configuring
 			 */
@@ -3734,37 +2767,31 @@ public class ServerHttpSecurity {
 				return HeaderSpec.this;
 			}
 
-			private ReferrerPolicySpec() {
-			}
-
-			private ReferrerPolicySpec(ReferrerPolicy referrerPolicy) {
-				HeaderSpec.this.referrerPolicy.setPolicy(referrerPolicy);
-			}
-
-		}
-
-		private HeaderSpec() {
-			this.writers = new ArrayList<>(
-					Arrays.asList(this.cacheControl, this.contentTypeOptions, this.hsts,
-							this.frameOptions, this.xss, this.featurePolicy, this.contentSecurityPolicy,
-							this.referrerPolicy));
 		}
 
 	}
 
 	/**
 	 * Configures log out
+	 *
 	 * @author Shazin Sadakath
 	 * @since 5.0
 	 * @see #logout()
 	 */
 	public final class LogoutSpec {
+
 		private LogoutWebFilter logoutWebFilter = new LogoutWebFilter();
+
 		private final SecurityContextServerLogoutHandler DEFAULT_LOGOUT_HANDLER = new SecurityContextServerLogoutHandler();
+
 		private List<ServerLogoutHandler> logoutHandlers = new ArrayList<>(Arrays.asList(this.DEFAULT_LOGOUT_HANDLER));
 
+		private LogoutSpec() {
+		}
+
 		/**
-		 * Configures the logout handler. Default is {@code SecurityContextServerLogoutHandler}
+		 * Configures the logout handler. Default is
+		 * {@code SecurityContextServerLogoutHandler}
 		 * @param logoutHandler
 		 * @return the {@link LogoutSpec} to configure
 		 */
@@ -3782,13 +2809,14 @@ public class ServerHttpSecurity {
 
 		/**
 		 * Configures what URL a POST to will trigger a log out.
-		 * @param logoutUrl the url to trigger a log out (i.e. "/signout" would mean a POST to "/signout" would trigger
-		 * log out)
+		 * @param logoutUrl the url to trigger a log out (i.e. "/signout" would mean a
+		 * POST to "/signout" would trigger log out)
 		 * @return the {@link LogoutSpec} to configure
 		 */
 		public LogoutSpec logoutUrl(String logoutUrl) {
 			Assert.notNull(logoutUrl, "logoutUrl must not be null");
-			ServerWebExchangeMatcher requiresLogout = ServerWebExchangeMatchers.pathMatchers(HttpMethod.POST, logoutUrl);
+			ServerWebExchangeMatcher requiresLogout = ServerWebExchangeMatchers.pathMatchers(HttpMethod.POST,
+					logoutUrl);
 			return requiresLogout(requiresLogout);
 		}
 
@@ -3831,11 +2859,11 @@ public class ServerHttpSecurity {
 			}
 			if (this.logoutHandlers.isEmpty()) {
 				return null;
-			} else if (this.logoutHandlers.size() == 1) {
-				return this.logoutHandlers.get(0);
-			} else {
-				return new DelegatingServerLogoutHandler(this.logoutHandlers);
 			}
+			if (this.logoutHandlers.size() == 1) {
+				return this.logoutHandlers.get(0);
+			}
+			return new DelegatingServerLogoutHandler(this.logoutHandlers);
 		}
 
 		protected void configure(ServerHttpSecurity http) {
@@ -3846,39 +2874,12 @@ public class ServerHttpSecurity {
 			http.addFilterAt(this.logoutWebFilter, SecurityWebFiltersOrder.LOGOUT);
 		}
 
-		private LogoutSpec() {}
-	}
-
-	private <T> T getBean(Class<T> beanClass) {
-		if (this.context == null) {
-			return null;
-		}
-		return this.context.getBean(beanClass);
-	}
-
-	private <T> T getBeanOrNull(Class<T> beanClass) {
-		return getBeanOrNull(ResolvableType.forClass(beanClass));
-	}
-
-
-	private <T> T getBeanOrNull(ResolvableType type) {
-		if (this.context == null) {
-			return null;
-		}
-		String[] names =  this.context.getBeanNamesForType(type);
-		if (names.length == 1) {
-			return (T) this.context.getBean(names[0]);
-		}
-		return null;
-	}
-
-	protected void setApplicationContext(ApplicationContext applicationContext)
-			throws BeansException {
-		this.context = applicationContext;
 	}
 
 	private static class OrderedWebFilter implements WebFilter, Ordered {
+
 		private final WebFilter webFilter;
+
 		private final int order;
 
 		OrderedWebFilter(WebFilter webFilter, int order) {
@@ -3887,8 +2888,7 @@ public class ServerHttpSecurity {
 		}
 
 		@Override
-		public Mono<Void> filter(ServerWebExchange exchange,
-			WebFilterChain chain) {
+		public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
 			return this.webFilter.filter(exchange, chain);
 		}
 
@@ -3899,39 +2899,1124 @@ public class ServerHttpSecurity {
 
 		@Override
 		public String toString() {
-			return "OrderedWebFilter{" + "webFilter=" + this.webFilter + ", order=" + this.order
-				+ '}';
+			return "OrderedWebFilter{" + "webFilter=" + this.webFilter + ", order=" + this.order + '}';
 		}
+
 	}
 
 	/**
 	 * Workaround https://jira.spring.io/projects/SPR/issues/SPR-17213
 	 */
 	static class ServerWebExchangeReactorContextWebFilter implements WebFilter {
+
 		@Override
 		public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
-			return chain.filter(exchange)
-					.subscriberContext(Context.of(ServerWebExchange.class, exchange));
+			return chain.filter(exchange).subscriberContext(Context.of(ServerWebExchange.class, exchange));
 		}
+
+	}
+
+	/**
+	 * Configures CORS support within Spring Security. This ensures that the
+	 * {@link CorsWebFilter} is place in the correct order.
+	 */
+	public final class CorsSpec {
+
+		private CorsWebFilter corsFilter;
+
+		private CorsSpec() {
+		}
+
+		/**
+		 * Configures the {@link CorsConfigurationSource} to be used
+		 * @param source the source to use
+		 * @return the {@link CorsSpec} for additional configuration
+		 */
+		public CorsSpec configurationSource(CorsConfigurationSource source) {
+			this.corsFilter = new CorsWebFilter(source);
+			return this;
+		}
+
+		/**
+		 * Disables CORS support within Spring Security.
+		 * @return the {@link ServerHttpSecurity} to continue configuring
+		 */
+		public ServerHttpSecurity disable() {
+			ServerHttpSecurity.this.cors = null;
+			return ServerHttpSecurity.this;
+		}
+
+		/**
+		 * Allows method chaining to continue configuring the {@link ServerHttpSecurity}
+		 * @return the {@link ServerHttpSecurity} to continue configuring
+		 */
+		public ServerHttpSecurity and() {
+			return ServerHttpSecurity.this;
+		}
+
+		protected void configure(ServerHttpSecurity http) {
+			CorsWebFilter corsFilter = getCorsFilter();
+			if (corsFilter != null) {
+				http.addFilterAt(this.corsFilter, SecurityWebFiltersOrder.CORS);
+			}
+		}
+
+		private CorsWebFilter getCorsFilter() {
+			if (this.corsFilter != null) {
+				return this.corsFilter;
+			}
+			CorsConfigurationSource source = getBeanOrNull(CorsConfigurationSource.class);
+			if (source == null) {
+				return null;
+			}
+			CorsProcessor processor = getBeanOrNull(CorsProcessor.class);
+			if (processor == null) {
+				processor = new DefaultCorsProcessor();
+			}
+			this.corsFilter = new CorsWebFilter(source, processor);
+			return this.corsFilter;
+		}
+
+	}
+
+	/**
+	 * Configures X509 authentication
+	 *
+	 * @author Alexey Nesterov
+	 * @since 5.2
+	 * @see #x509()
+	 */
+	public final class X509Spec {
+
+		private X509PrincipalExtractor principalExtractor;
+
+		private ReactiveAuthenticationManager authenticationManager;
+
+		private X509Spec() {
+		}
+
+		public X509Spec principalExtractor(X509PrincipalExtractor principalExtractor) {
+			this.principalExtractor = principalExtractor;
+			return this;
+		}
+
+		public X509Spec authenticationManager(ReactiveAuthenticationManager authenticationManager) {
+			this.authenticationManager = authenticationManager;
+			return this;
+		}
+
+		public ServerHttpSecurity and() {
+			return ServerHttpSecurity.this;
+		}
+
+		protected void configure(ServerHttpSecurity http) {
+			ReactiveAuthenticationManager authenticationManager = getAuthenticationManager();
+			X509PrincipalExtractor principalExtractor = getPrincipalExtractor();
+			AuthenticationWebFilter filter = new AuthenticationWebFilter(authenticationManager);
+			filter.setServerAuthenticationConverter(new ServerX509AuthenticationConverter(principalExtractor));
+			http.addFilterAt(filter, SecurityWebFiltersOrder.AUTHENTICATION);
+		}
+
+		private X509PrincipalExtractor getPrincipalExtractor() {
+			if (this.principalExtractor != null) {
+				return this.principalExtractor;
+			}
+			return new SubjectDnX509PrincipalExtractor();
+		}
+
+		private ReactiveAuthenticationManager getAuthenticationManager() {
+			if (this.authenticationManager != null) {
+				return this.authenticationManager;
+			}
+			ReactiveUserDetailsService userDetailsService = getBean(ReactiveUserDetailsService.class);
+			return new ReactivePreAuthenticatedAuthenticationManager(userDetailsService);
+		}
+
+	}
+
+	public final class OAuth2LoginSpec {
+
+		private ReactiveClientRegistrationRepository clientRegistrationRepository;
+
+		private ServerOAuth2AuthorizedClientRepository authorizedClientRepository;
+
+		private ServerAuthorizationRequestRepository<OAuth2AuthorizationRequest> authorizationRequestRepository;
+
+		private ReactiveAuthenticationManager authenticationManager;
+
+		private ServerSecurityContextRepository securityContextRepository;
+
+		private ServerAuthenticationConverter authenticationConverter;
+
+		private ServerOAuth2AuthorizationRequestResolver authorizationRequestResolver;
+
+		private ServerWebExchangeMatcher authenticationMatcher;
+
+		private ServerAuthenticationSuccessHandler authenticationSuccessHandler;
+
+		private ServerAuthenticationFailureHandler authenticationFailureHandler;
+
+		private OAuth2LoginSpec() {
+		}
+
+		/**
+		 * Configures the {@link ReactiveAuthenticationManager} to use. The default is
+		 * {@link OAuth2AuthorizationCodeReactiveAuthenticationManager}
+		 * @param authenticationManager the manager to use
+		 * @return the {@link OAuth2LoginSpec} to customize
+		 */
+		public OAuth2LoginSpec authenticationManager(ReactiveAuthenticationManager authenticationManager) {
+			this.authenticationManager = authenticationManager;
+			return this;
+		}
+
+		/**
+		 * The {@link ServerSecurityContextRepository} used to save the
+		 * {@code Authentication}. Defaults to
+		 * {@link WebSessionServerSecurityContextRepository}.
+		 * @param securityContextRepository the repository to use
+		 * @return the {@link OAuth2LoginSpec} to continue configuring
+		 * @since 5.2
+		 */
+		public OAuth2LoginSpec securityContextRepository(ServerSecurityContextRepository securityContextRepository) {
+			this.securityContextRepository = securityContextRepository;
+			return this;
+		}
+
+		/**
+		 * The {@link ServerAuthenticationSuccessHandler} used after authentication
+		 * success. Defaults to {@link RedirectServerAuthenticationSuccessHandler}
+		 * redirecting to "/".
+		 * @param authenticationSuccessHandler the success handler to use
+		 * @return the {@link OAuth2LoginSpec} to customize
+		 * @since 5.2
+		 */
+		public OAuth2LoginSpec authenticationSuccessHandler(
+				ServerAuthenticationSuccessHandler authenticationSuccessHandler) {
+			Assert.notNull(authenticationSuccessHandler, "authenticationSuccessHandler cannot be null");
+			this.authenticationSuccessHandler = authenticationSuccessHandler;
+			return this;
+		}
+
+		/**
+		 * The {@link ServerAuthenticationFailureHandler} used after authentication
+		 * failure. Defaults to {@link RedirectServerAuthenticationFailureHandler}
+		 * redirecting to "/login?error".
+		 * @param authenticationFailureHandler the failure handler to use
+		 * @return the {@link OAuth2LoginSpec} to customize
+		 * @since 5.2
+		 */
+		public OAuth2LoginSpec authenticationFailureHandler(
+				ServerAuthenticationFailureHandler authenticationFailureHandler) {
+			Assert.notNull(authenticationFailureHandler, "authenticationFailureHandler cannot be null");
+			this.authenticationFailureHandler = authenticationFailureHandler;
+			return this;
+		}
+
+		/**
+		 * Gets the {@link ReactiveAuthenticationManager} to use. First tries an
+		 * explicitly configured manager, and defaults to
+		 * {@link OAuth2AuthorizationCodeReactiveAuthenticationManager}
+		 * @return the {@link ReactiveAuthenticationManager} to use
+		 */
+		private ReactiveAuthenticationManager getAuthenticationManager() {
+			if (this.authenticationManager == null) {
+				this.authenticationManager = createDefault();
+			}
+			return this.authenticationManager;
+		}
+
+		private ReactiveAuthenticationManager createDefault() {
+			ReactiveOAuth2AccessTokenResponseClient<OAuth2AuthorizationCodeGrantRequest> client = getAccessTokenResponseClient();
+			OAuth2LoginReactiveAuthenticationManager oauth2Manager = new OAuth2LoginReactiveAuthenticationManager(
+					client, getOauth2UserService());
+			GrantedAuthoritiesMapper authoritiesMapper = getBeanOrNull(GrantedAuthoritiesMapper.class);
+			if (authoritiesMapper != null) {
+				oauth2Manager.setAuthoritiesMapper(authoritiesMapper);
+			}
+			boolean oidcAuthenticationProviderEnabled = ClassUtils
+					.isPresent("org.springframework.security.oauth2.jwt.JwtDecoder", this.getClass().getClassLoader());
+			if (!oidcAuthenticationProviderEnabled) {
+				return oauth2Manager;
+			}
+			OidcAuthorizationCodeReactiveAuthenticationManager oidc = new OidcAuthorizationCodeReactiveAuthenticationManager(
+					client, getOidcUserService());
+			ResolvableType type = ResolvableType.forClassWithGenerics(ReactiveJwtDecoderFactory.class,
+					ClientRegistration.class);
+			ReactiveJwtDecoderFactory<ClientRegistration> jwtDecoderFactory = getBeanOrNull(type);
+			if (jwtDecoderFactory != null) {
+				oidc.setJwtDecoderFactory(jwtDecoderFactory);
+			}
+			if (authoritiesMapper != null) {
+				oidc.setAuthoritiesMapper(authoritiesMapper);
+			}
+			return new DelegatingReactiveAuthenticationManager(oidc, oauth2Manager);
+		}
+
+		/**
+		 * Sets the converter to use
+		 * @param authenticationConverter the converter to use
+		 * @return the {@link OAuth2LoginSpec} to customize
+		 */
+		public OAuth2LoginSpec authenticationConverter(ServerAuthenticationConverter authenticationConverter) {
+			this.authenticationConverter = authenticationConverter;
+			return this;
+		}
+
+		private ServerAuthenticationConverter getAuthenticationConverter(
+				ReactiveClientRegistrationRepository clientRegistrationRepository) {
+			if (this.authenticationConverter != null) {
+				return this.authenticationConverter;
+			}
+			ServerOAuth2AuthorizationCodeAuthenticationTokenConverter delegate = new ServerOAuth2AuthorizationCodeAuthenticationTokenConverter(
+					clientRegistrationRepository);
+			delegate.setAuthorizationRequestRepository(getAuthorizationRequestRepository());
+			ServerAuthenticationConverter authenticationConverter = (exchange) -> delegate.convert(exchange).onErrorMap(
+					OAuth2AuthorizationException.class,
+					(e) -> new OAuth2AuthenticationException(e.getError(), e.getError().toString()));
+			this.authenticationConverter = authenticationConverter;
+			return authenticationConverter;
+		}
+
+		public OAuth2LoginSpec clientRegistrationRepository(
+				ReactiveClientRegistrationRepository clientRegistrationRepository) {
+			this.clientRegistrationRepository = clientRegistrationRepository;
+			return this;
+		}
+
+		public OAuth2LoginSpec authorizedClientService(ReactiveOAuth2AuthorizedClientService authorizedClientService) {
+			this.authorizedClientRepository = new AuthenticatedPrincipalServerOAuth2AuthorizedClientRepository(
+					authorizedClientService);
+			return this;
+		}
+
+		public OAuth2LoginSpec authorizedClientRepository(
+				ServerOAuth2AuthorizedClientRepository authorizedClientRepository) {
+			this.authorizedClientRepository = authorizedClientRepository;
+			return this;
+		}
+
+		/**
+		 * Sets the repository to use for storing {@link OAuth2AuthorizationRequest}'s.
+		 * @param authorizationRequestRepository the repository to use for storing
+		 * {@link OAuth2AuthorizationRequest}'s
+		 * @return the {@link OAuth2LoginSpec} for further configuration
+		 * @since 5.2
+		 */
+		public OAuth2LoginSpec authorizationRequestRepository(
+				ServerAuthorizationRequestRepository<OAuth2AuthorizationRequest> authorizationRequestRepository) {
+			this.authorizationRequestRepository = authorizationRequestRepository;
+			return this;
+		}
+
+		/**
+		 * Sets the resolver used for resolving {@link OAuth2AuthorizationRequest}'s.
+		 * @param authorizationRequestResolver the resolver used for resolving
+		 * {@link OAuth2AuthorizationRequest}'s
+		 * @return the {@link OAuth2LoginSpec} for further configuration
+		 * @since 5.2
+		 */
+		public OAuth2LoginSpec authorizationRequestResolver(
+				ServerOAuth2AuthorizationRequestResolver authorizationRequestResolver) {
+			this.authorizationRequestResolver = authorizationRequestResolver;
+			return this;
+		}
+
+		/**
+		 * Sets the {@link ServerWebExchangeMatcher matcher} used for determining if the
+		 * request is an authentication request.
+		 * @param authenticationMatcher the {@link ServerWebExchangeMatcher matcher} used
+		 * for determining if the request is an authentication request
+		 * @return the {@link OAuth2LoginSpec} for further configuration
+		 * @since 5.2
+		 */
+		public OAuth2LoginSpec authenticationMatcher(ServerWebExchangeMatcher authenticationMatcher) {
+			this.authenticationMatcher = authenticationMatcher;
+			return this;
+		}
+
+		private ServerWebExchangeMatcher getAuthenticationMatcher() {
+			if (this.authenticationMatcher == null) {
+				this.authenticationMatcher = createAttemptAuthenticationRequestMatcher();
+			}
+			return this.authenticationMatcher;
+		}
+
+		/**
+		 * Allows method chaining to continue configuring the {@link ServerHttpSecurity}
+		 * @return the {@link ServerHttpSecurity} to continue configuring
+		 */
+		public ServerHttpSecurity and() {
+			return ServerHttpSecurity.this;
+		}
+
+		protected void configure(ServerHttpSecurity http) {
+			ReactiveClientRegistrationRepository clientRegistrationRepository = getClientRegistrationRepository();
+			ServerOAuth2AuthorizedClientRepository authorizedClientRepository = getAuthorizedClientRepository();
+			OAuth2AuthorizationRequestRedirectWebFilter oauthRedirectFilter = getRedirectWebFilter();
+			ServerAuthorizationRequestRepository<OAuth2AuthorizationRequest> authorizationRequestRepository = getAuthorizationRequestRepository();
+			oauthRedirectFilter.setAuthorizationRequestRepository(authorizationRequestRepository);
+			oauthRedirectFilter.setRequestCache(http.requestCache.requestCache);
+			ReactiveAuthenticationManager manager = getAuthenticationManager();
+			AuthenticationWebFilter authenticationFilter = new OAuth2LoginAuthenticationWebFilter(manager,
+					authorizedClientRepository);
+			authenticationFilter.setRequiresAuthenticationMatcher(getAuthenticationMatcher());
+			authenticationFilter
+					.setServerAuthenticationConverter(getAuthenticationConverter(clientRegistrationRepository));
+			authenticationFilter.setAuthenticationSuccessHandler(getAuthenticationSuccessHandler(http));
+			authenticationFilter.setAuthenticationFailureHandler(getAuthenticationFailureHandler());
+			authenticationFilter.setSecurityContextRepository(this.securityContextRepository);
+			setDefaultEntryPoints(http);
+			http.addFilterAt(oauthRedirectFilter, SecurityWebFiltersOrder.HTTP_BASIC);
+			http.addFilterAt(authenticationFilter, SecurityWebFiltersOrder.AUTHENTICATION);
+		}
+
+		private void setDefaultEntryPoints(ServerHttpSecurity http) {
+			String defaultLoginPage = "/login";
+			Map<String, String> urlToText = http.oauth2Login.getLinks();
+			String providerLoginPage = null;
+			if (urlToText.size() == 1) {
+				providerLoginPage = urlToText.keySet().iterator().next();
+			}
+			MediaTypeServerWebExchangeMatcher htmlMatcher = new MediaTypeServerWebExchangeMatcher(
+					MediaType.APPLICATION_XHTML_XML, new MediaType("image", "*"), MediaType.TEXT_HTML,
+					MediaType.TEXT_PLAIN);
+			htmlMatcher.setIgnoredMediaTypes(Collections.singleton(MediaType.ALL));
+			ServerWebExchangeMatcher xhrMatcher = (exchange) -> {
+				if (exchange.getRequest().getHeaders().getOrEmpty("X-Requested-With").contains("XMLHttpRequest")) {
+					return ServerWebExchangeMatcher.MatchResult.match();
+				}
+				return ServerWebExchangeMatcher.MatchResult.notMatch();
+			};
+			ServerWebExchangeMatcher notXhrMatcher = new NegatedServerWebExchangeMatcher(xhrMatcher);
+			ServerWebExchangeMatcher defaultEntryPointMatcher = new AndServerWebExchangeMatcher(notXhrMatcher,
+					htmlMatcher);
+			if (providerLoginPage != null) {
+				ServerWebExchangeMatcher loginPageMatcher = new PathPatternParserServerWebExchangeMatcher(
+						defaultLoginPage);
+				ServerWebExchangeMatcher faviconMatcher = new PathPatternParserServerWebExchangeMatcher("/favicon.ico");
+				ServerWebExchangeMatcher defaultLoginPageMatcher = new AndServerWebExchangeMatcher(
+						new OrServerWebExchangeMatcher(loginPageMatcher, faviconMatcher), defaultEntryPointMatcher);
+
+				ServerWebExchangeMatcher matcher = new AndServerWebExchangeMatcher(notXhrMatcher,
+						new NegatedServerWebExchangeMatcher(defaultLoginPageMatcher));
+				RedirectServerAuthenticationEntryPoint entryPoint = new RedirectServerAuthenticationEntryPoint(
+						providerLoginPage);
+				entryPoint.setRequestCache(http.requestCache.requestCache);
+				http.defaultEntryPoints.add(new DelegateEntry(matcher, entryPoint));
+			}
+			RedirectServerAuthenticationEntryPoint defaultEntryPoint = new RedirectServerAuthenticationEntryPoint(
+					defaultLoginPage);
+			defaultEntryPoint.setRequestCache(http.requestCache.requestCache);
+			http.defaultEntryPoints.add(new DelegateEntry(defaultEntryPointMatcher, defaultEntryPoint));
+		}
+
+		private ServerAuthenticationSuccessHandler getAuthenticationSuccessHandler(ServerHttpSecurity http) {
+			if (this.authenticationSuccessHandler == null) {
+				RedirectServerAuthenticationSuccessHandler handler = new RedirectServerAuthenticationSuccessHandler();
+				handler.setRequestCache(http.requestCache.requestCache);
+				this.authenticationSuccessHandler = handler;
+			}
+			return this.authenticationSuccessHandler;
+		}
+
+		private ServerAuthenticationFailureHandler getAuthenticationFailureHandler() {
+			if (this.authenticationFailureHandler == null) {
+				this.authenticationFailureHandler = new RedirectServerAuthenticationFailureHandler("/login?error");
+			}
+			return this.authenticationFailureHandler;
+		}
+
+		private ServerWebExchangeMatcher createAttemptAuthenticationRequestMatcher() {
+			return new PathPatternParserServerWebExchangeMatcher("/login/oauth2/code/{registrationId}");
+		}
+
+		private ReactiveOAuth2UserService<OidcUserRequest, OidcUser> getOidcUserService() {
+			ResolvableType type = ResolvableType.forClassWithGenerics(ReactiveOAuth2UserService.class,
+					OidcUserRequest.class, OidcUser.class);
+			ReactiveOAuth2UserService<OidcUserRequest, OidcUser> bean = getBeanOrNull(type);
+			if (bean != null) {
+				return bean;
+			}
+			return new OidcReactiveOAuth2UserService();
+		}
+
+		private ReactiveOAuth2UserService<OAuth2UserRequest, OAuth2User> getOauth2UserService() {
+			ResolvableType type = ResolvableType.forClassWithGenerics(ReactiveOAuth2UserService.class,
+					OAuth2UserRequest.class, OAuth2User.class);
+			ReactiveOAuth2UserService<OAuth2UserRequest, OAuth2User> bean = getBeanOrNull(type);
+			if (bean != null) {
+				return bean;
+			}
+			return new DefaultReactiveOAuth2UserService();
+		}
+
+		private Map<String, String> getLinks() {
+			Iterable<ClientRegistration> registrations = getBeanOrNull(
+					ResolvableType.forClassWithGenerics(Iterable.class, ClientRegistration.class));
+			if (registrations == null) {
+				return Collections.emptyMap();
+			}
+			Map<String, String> result = new HashMap<>();
+			registrations.iterator().forEachRemaining(
+					(r) -> result.put("/oauth2/authorization/" + r.getRegistrationId(), r.getClientName()));
+			return result;
+		}
+
+		private ReactiveOAuth2AccessTokenResponseClient<OAuth2AuthorizationCodeGrantRequest> getAccessTokenResponseClient() {
+			ResolvableType type = ResolvableType.forClassWithGenerics(ReactiveOAuth2AccessTokenResponseClient.class,
+					OAuth2AuthorizationCodeGrantRequest.class);
+			ReactiveOAuth2AccessTokenResponseClient<OAuth2AuthorizationCodeGrantRequest> bean = getBeanOrNull(type);
+			if (bean != null) {
+				return bean;
+			}
+			return new WebClientReactiveAuthorizationCodeTokenResponseClient();
+		}
+
+		private ReactiveClientRegistrationRepository getClientRegistrationRepository() {
+			if (this.clientRegistrationRepository == null) {
+				this.clientRegistrationRepository = getBeanOrNull(ReactiveClientRegistrationRepository.class);
+			}
+			return this.clientRegistrationRepository;
+		}
+
+		private OAuth2AuthorizationRequestRedirectWebFilter getRedirectWebFilter() {
+			OAuth2AuthorizationRequestRedirectWebFilter oauthRedirectFilter;
+			if (this.authorizationRequestResolver != null) {
+				return new OAuth2AuthorizationRequestRedirectWebFilter(this.authorizationRequestResolver);
+			}
+			return new OAuth2AuthorizationRequestRedirectWebFilter(getClientRegistrationRepository());
+		}
+
+		private ServerOAuth2AuthorizedClientRepository getAuthorizedClientRepository() {
+			ServerOAuth2AuthorizedClientRepository result = this.authorizedClientRepository;
+			if (result == null) {
+				result = getBeanOrNull(ServerOAuth2AuthorizedClientRepository.class);
+			}
+			if (result == null) {
+				ReactiveOAuth2AuthorizedClientService authorizedClientService = getAuthorizedClientService();
+				if (authorizedClientService != null) {
+					result = new AuthenticatedPrincipalServerOAuth2AuthorizedClientRepository(authorizedClientService);
+				}
+			}
+			return result;
+		}
+
+		private ServerAuthorizationRequestRepository<OAuth2AuthorizationRequest> getAuthorizationRequestRepository() {
+			if (this.authorizationRequestRepository == null) {
+				this.authorizationRequestRepository = new WebSessionOAuth2ServerAuthorizationRequestRepository();
+			}
+			return this.authorizationRequestRepository;
+		}
+
+		private ReactiveOAuth2AuthorizedClientService getAuthorizedClientService() {
+			ReactiveOAuth2AuthorizedClientService bean = getBeanOrNull(ReactiveOAuth2AuthorizedClientService.class);
+			if (bean != null) {
+				return bean;
+			}
+			return new InMemoryReactiveOAuth2AuthorizedClientService(getClientRegistrationRepository());
+		}
+
+	}
+
+	public final class OAuth2ClientSpec {
+
+		private ReactiveClientRegistrationRepository clientRegistrationRepository;
+
+		private ServerAuthenticationConverter authenticationConverter;
+
+		private ServerOAuth2AuthorizedClientRepository authorizedClientRepository;
+
+		private ReactiveAuthenticationManager authenticationManager;
+
+		private ServerAuthorizationRequestRepository<OAuth2AuthorizationRequest> authorizationRequestRepository;
+
+		private OAuth2ClientSpec() {
+		}
+
+		/**
+		 * Sets the converter to use
+		 * @param authenticationConverter the converter to use
+		 * @return the {@link OAuth2ClientSpec} to customize
+		 */
+		public OAuth2ClientSpec authenticationConverter(ServerAuthenticationConverter authenticationConverter) {
+			this.authenticationConverter = authenticationConverter;
+			return this;
+		}
+
+		private ServerAuthenticationConverter getAuthenticationConverter() {
+			if (this.authenticationConverter == null) {
+				ServerOAuth2AuthorizationCodeAuthenticationTokenConverter authenticationConverter = new ServerOAuth2AuthorizationCodeAuthenticationTokenConverter(
+						getClientRegistrationRepository());
+				authenticationConverter.setAuthorizationRequestRepository(getAuthorizationRequestRepository());
+				this.authenticationConverter = authenticationConverter;
+			}
+			return this.authenticationConverter;
+		}
+
+		/**
+		 * Configures the {@link ReactiveAuthenticationManager} to use. The default is
+		 * {@link OAuth2AuthorizationCodeReactiveAuthenticationManager}
+		 * @param authenticationManager the manager to use
+		 * @return the {@link OAuth2ClientSpec} to customize
+		 */
+		public OAuth2ClientSpec authenticationManager(ReactiveAuthenticationManager authenticationManager) {
+			this.authenticationManager = authenticationManager;
+			return this;
+		}
+
+		/**
+		 * Gets the {@link ReactiveAuthenticationManager} to use. First tries an
+		 * explicitly configured manager, and defaults to
+		 * {@link OAuth2AuthorizationCodeReactiveAuthenticationManager}
+		 * @return the {@link ReactiveAuthenticationManager} to use
+		 */
+		private ReactiveAuthenticationManager getAuthenticationManager() {
+			if (this.authenticationManager == null) {
+				this.authenticationManager = new OAuth2AuthorizationCodeReactiveAuthenticationManager(
+						new WebClientReactiveAuthorizationCodeTokenResponseClient());
+			}
+			return this.authenticationManager;
+		}
+
+		/**
+		 * Configures the {@link ReactiveClientRegistrationRepository}. Default is to look
+		 * the value up as a Bean.
+		 * @param clientRegistrationRepository the repository to use
+		 * @return the {@link OAuth2ClientSpec} to customize
+		 */
+		public OAuth2ClientSpec clientRegistrationRepository(
+				ReactiveClientRegistrationRepository clientRegistrationRepository) {
+			this.clientRegistrationRepository = clientRegistrationRepository;
+			return this;
+		}
+
+		/**
+		 * Configures the {@link ReactiveClientRegistrationRepository}. Default is to look
+		 * the value up as a Bean.
+		 * @param authorizedClientRepository the repository to use
+		 * @return the {@link OAuth2ClientSpec} to customize
+		 */
+		public OAuth2ClientSpec authorizedClientRepository(
+				ServerOAuth2AuthorizedClientRepository authorizedClientRepository) {
+			this.authorizedClientRepository = authorizedClientRepository;
+			return this;
+		}
+
+		/**
+		 * Sets the repository to use for storing {@link OAuth2AuthorizationRequest}'s.
+		 * @param authorizationRequestRepository the repository to use for storing
+		 * {@link OAuth2AuthorizationRequest}'s
+		 * @return the {@link OAuth2ClientSpec} to customize
+		 * @since 5.2
+		 */
+		public OAuth2ClientSpec authorizationRequestRepository(
+				ServerAuthorizationRequestRepository<OAuth2AuthorizationRequest> authorizationRequestRepository) {
+			this.authorizationRequestRepository = authorizationRequestRepository;
+			return this;
+		}
+
+		private ServerAuthorizationRequestRepository<OAuth2AuthorizationRequest> getAuthorizationRequestRepository() {
+			if (this.authorizationRequestRepository == null) {
+				this.authorizationRequestRepository = new WebSessionOAuth2ServerAuthorizationRequestRepository();
+			}
+			return this.authorizationRequestRepository;
+		}
+
+		/**
+		 * Allows method chaining to continue configuring the {@link ServerHttpSecurity}
+		 * @return the {@link ServerHttpSecurity} to continue configuring
+		 */
+		public ServerHttpSecurity and() {
+			return ServerHttpSecurity.this;
+		}
+
+		protected void configure(ServerHttpSecurity http) {
+			ReactiveClientRegistrationRepository clientRegistrationRepository = getClientRegistrationRepository();
+			ServerOAuth2AuthorizedClientRepository authorizedClientRepository = getAuthorizedClientRepository();
+			ServerAuthenticationConverter authenticationConverter = getAuthenticationConverter();
+			ReactiveAuthenticationManager authenticationManager = getAuthenticationManager();
+			OAuth2AuthorizationCodeGrantWebFilter codeGrantWebFilter = new OAuth2AuthorizationCodeGrantWebFilter(
+					authenticationManager, authenticationConverter, authorizedClientRepository);
+			codeGrantWebFilter.setAuthorizationRequestRepository(getAuthorizationRequestRepository());
+			if (http.requestCache != null) {
+				codeGrantWebFilter.setRequestCache(http.requestCache.requestCache);
+			}
+			OAuth2AuthorizationRequestRedirectWebFilter oauthRedirectFilter = new OAuth2AuthorizationRequestRedirectWebFilter(
+					clientRegistrationRepository);
+			oauthRedirectFilter.setAuthorizationRequestRepository(getAuthorizationRequestRepository());
+			if (http.requestCache != null) {
+				oauthRedirectFilter.setRequestCache(http.requestCache.requestCache);
+			}
+			http.addFilterAt(codeGrantWebFilter, SecurityWebFiltersOrder.OAUTH2_AUTHORIZATION_CODE);
+			http.addFilterAt(oauthRedirectFilter, SecurityWebFiltersOrder.HTTP_BASIC);
+		}
+
+		private ReactiveClientRegistrationRepository getClientRegistrationRepository() {
+			if (this.clientRegistrationRepository != null) {
+				return this.clientRegistrationRepository;
+			}
+			return getBeanOrNull(ReactiveClientRegistrationRepository.class);
+		}
+
+		private ServerOAuth2AuthorizedClientRepository getAuthorizedClientRepository() {
+			if (this.authorizedClientRepository != null) {
+				return this.authorizedClientRepository;
+			}
+			ServerOAuth2AuthorizedClientRepository result = getBeanOrNull(ServerOAuth2AuthorizedClientRepository.class);
+			if (result != null) {
+				return result;
+			}
+			ReactiveOAuth2AuthorizedClientService authorizedClientService = getAuthorizedClientService();
+			if (authorizedClientService != null) {
+				return new AuthenticatedPrincipalServerOAuth2AuthorizedClientRepository(authorizedClientService);
+			}
+			return null;
+		}
+
+		private ReactiveOAuth2AuthorizedClientService getAuthorizedClientService() {
+			ReactiveOAuth2AuthorizedClientService bean = getBeanOrNull(ReactiveOAuth2AuthorizedClientService.class);
+			if (bean != null) {
+				return bean;
+			}
+			return new InMemoryReactiveOAuth2AuthorizedClientService(getClientRegistrationRepository());
+		}
+
+	}
+
+	/**
+	 * Configures OAuth2 Resource Server Support
+	 */
+	public class OAuth2ResourceServerSpec {
+
+		private ServerAuthenticationEntryPoint entryPoint = new BearerTokenServerAuthenticationEntryPoint();
+
+		private ServerAccessDeniedHandler accessDeniedHandler = new BearerTokenServerAccessDeniedHandler();
+
+		private ServerAuthenticationConverter bearerTokenConverter = new ServerBearerTokenAuthenticationConverter();
+
+		private AuthenticationConverterServerWebExchangeMatcher authenticationConverterServerWebExchangeMatcher;
+
+		private JwtSpec jwt;
+
+		private OpaqueTokenSpec opaqueToken;
+
+		private ReactiveAuthenticationManagerResolver<ServerWebExchange> authenticationManagerResolver;
+
+		/**
+		 * Configures the {@link ServerAccessDeniedHandler} to use for requests
+		 * authenticating with
+		 * <a href="https://tools.ietf.org/html/rfc6750#section-1.2" target=
+		 * "_blank">Bearer Token</a>s. requests.
+		 * @param accessDeniedHandler the {@link ServerAccessDeniedHandler} to use
+		 * @return the {@link OAuth2ResourceServerSpec} for additional configuration
+		 * @since 5.2
+		 */
+		public OAuth2ResourceServerSpec accessDeniedHandler(ServerAccessDeniedHandler accessDeniedHandler) {
+			Assert.notNull(accessDeniedHandler, "accessDeniedHandler cannot be null");
+			this.accessDeniedHandler = accessDeniedHandler;
+			return this;
+		}
+
+		/**
+		 * Configures the {@link ServerAuthenticationEntryPoint} to use for requests
+		 * authenticating with
+		 * <a href="https://tools.ietf.org/html/rfc6750#section-1.2" target=
+		 * "_blank">Bearer Token</a>s.
+		 * @param entryPoint the {@link ServerAuthenticationEntryPoint} to use
+		 * @return the {@link OAuth2ResourceServerSpec} for additional configuration
+		 * @since 5.2
+		 */
+		public OAuth2ResourceServerSpec authenticationEntryPoint(ServerAuthenticationEntryPoint entryPoint) {
+			Assert.notNull(entryPoint, "entryPoint cannot be null");
+			this.entryPoint = entryPoint;
+			return this;
+		}
+
+		/**
+		 * Configures the {@link ServerAuthenticationConverter} to use for requests
+		 * authenticating with
+		 * <a href="https://tools.ietf.org/html/rfc6750#section-1.2" target=
+		 * "_blank">Bearer Token</a>s.
+		 * @param bearerTokenConverter The {@link ServerAuthenticationConverter} to use
+		 * @return The {@link OAuth2ResourceServerSpec} for additional configuration
+		 * @since 5.2
+		 */
+		public OAuth2ResourceServerSpec bearerTokenConverter(ServerAuthenticationConverter bearerTokenConverter) {
+			Assert.notNull(bearerTokenConverter, "bearerTokenConverter cannot be null");
+			this.bearerTokenConverter = bearerTokenConverter;
+			return this;
+		}
+
+		/**
+		 * Configures the {@link ReactiveAuthenticationManagerResolver}
+		 * @param authenticationManagerResolver the
+		 * {@link ReactiveAuthenticationManagerResolver}
+		 * @return the {@link OAuth2ResourceServerSpec} for additional configuration
+		 * @since 5.3
+		 */
+		public OAuth2ResourceServerSpec authenticationManagerResolver(
+				ReactiveAuthenticationManagerResolver<ServerWebExchange> authenticationManagerResolver) {
+			Assert.notNull(authenticationManagerResolver, "authenticationManagerResolver cannot be null");
+			this.authenticationManagerResolver = authenticationManagerResolver;
+			return this;
+		}
+
+		/**
+		 * Enables JWT Resource Server support.
+		 * @return the {@link JwtSpec} for additional configuration
+		 */
+		public JwtSpec jwt() {
+			if (this.jwt == null) {
+				this.jwt = new JwtSpec();
+			}
+			return this.jwt;
+		}
+
+		/**
+		 * Enables JWT Resource Server support.
+		 * @param jwtCustomizer the {@link Customizer} to provide more options for the
+		 * {@link JwtSpec}
+		 * @return the {@link OAuth2ResourceServerSpec} to customize
+		 */
+		public OAuth2ResourceServerSpec jwt(Customizer<JwtSpec> jwtCustomizer) {
+			if (this.jwt == null) {
+				this.jwt = new JwtSpec();
+			}
+			jwtCustomizer.customize(this.jwt);
+			return this;
+		}
+
+		/**
+		 * Enables Opaque Token Resource Server support.
+		 * @return the {@link OpaqueTokenSpec} for additional configuration
+		 */
+		public OpaqueTokenSpec opaqueToken() {
+			if (this.opaqueToken == null) {
+				this.opaqueToken = new OpaqueTokenSpec();
+			}
+			return this.opaqueToken;
+		}
+
+		/**
+		 * Enables Opaque Token Resource Server support.
+		 * @param opaqueTokenCustomizer the {@link Customizer} to provide more options for
+		 * the {@link OpaqueTokenSpec}
+		 * @return the {@link OAuth2ResourceServerSpec} to customize
+		 */
+		public OAuth2ResourceServerSpec opaqueToken(Customizer<OpaqueTokenSpec> opaqueTokenCustomizer) {
+			if (this.opaqueToken == null) {
+				this.opaqueToken = new OpaqueTokenSpec();
+			}
+			opaqueTokenCustomizer.customize(this.opaqueToken);
+			return this;
+		}
+
+		protected void configure(ServerHttpSecurity http) {
+			this.authenticationConverterServerWebExchangeMatcher = new AuthenticationConverterServerWebExchangeMatcher(
+					this.bearerTokenConverter);
+			registerDefaultAccessDeniedHandler(http);
+			registerDefaultAuthenticationEntryPoint(http);
+			registerDefaultCsrfOverride(http);
+			validateConfiguration();
+			if (this.authenticationManagerResolver != null) {
+				AuthenticationWebFilter oauth2 = new AuthenticationWebFilter(this.authenticationManagerResolver);
+				oauth2.setServerAuthenticationConverter(this.bearerTokenConverter);
+				oauth2.setAuthenticationFailureHandler(
+						new ServerAuthenticationEntryPointFailureHandler(this.entryPoint));
+				http.addFilterAt(oauth2, SecurityWebFiltersOrder.AUTHENTICATION);
+			}
+			else if (this.jwt != null) {
+				this.jwt.configure(http);
+			}
+			else if (this.opaqueToken != null) {
+				this.opaqueToken.configure(http);
+			}
+		}
+
+		private void validateConfiguration() {
+			if (this.authenticationManagerResolver == null) {
+				Assert.state(this.jwt != null || this.opaqueToken != null,
+						"Jwt and Opaque Token are the only supported formats for bearer tokens "
+								+ "in Spring Security and neither was found. Make sure to configure JWT "
+								+ "via http.oauth2ResourceServer().jwt() or Opaque Tokens via "
+								+ "http.oauth2ResourceServer().opaqueToken().");
+				Assert.state(this.jwt == null || this.opaqueToken == null,
+						"Spring Security only supports JWTs or Opaque Tokens, not both at the " + "same time.");
+			}
+			else {
+				Assert.state(this.jwt == null && this.opaqueToken == null,
+						"If an authenticationManagerResolver() is configured, then it takes "
+								+ "precedence over any jwt() or opaqueToken() configuration.");
+			}
+		}
+
+		private void registerDefaultAccessDeniedHandler(ServerHttpSecurity http) {
+			if (http.exceptionHandling != null) {
+				http.defaultAccessDeniedHandlers
+						.add(new ServerWebExchangeDelegatingServerAccessDeniedHandler.DelegateEntry(
+								this.authenticationConverterServerWebExchangeMatcher,
+								OAuth2ResourceServerSpec.this.accessDeniedHandler));
+			}
+		}
+
+		private void registerDefaultAuthenticationEntryPoint(ServerHttpSecurity http) {
+			if (http.exceptionHandling != null) {
+				http.defaultEntryPoints.add(new DelegateEntry(this.authenticationConverterServerWebExchangeMatcher,
+						OAuth2ResourceServerSpec.this.entryPoint));
+			}
+		}
+
+		private void registerDefaultCsrfOverride(ServerHttpSecurity http) {
+			if (http.csrf != null && !http.csrf.specifiedRequireCsrfProtectionMatcher) {
+				AndServerWebExchangeMatcher matcher = new AndServerWebExchangeMatcher(
+						CsrfWebFilter.DEFAULT_CSRF_MATCHER,
+						new NegatedServerWebExchangeMatcher(this.authenticationConverterServerWebExchangeMatcher));
+				http.csrf().requireCsrfProtectionMatcher(matcher);
+			}
+		}
+
+		public ServerHttpSecurity and() {
+			return ServerHttpSecurity.this;
+		}
+
+		private class BearerTokenAuthenticationWebFilter extends AuthenticationWebFilter {
+
+			private ServerAuthenticationFailureHandler authenticationFailureHandler;
+
+			BearerTokenAuthenticationWebFilter(ReactiveAuthenticationManager authenticationManager) {
+				super(authenticationManager);
+			}
+
+			@Override
+			public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
+				WebFilterExchange webFilterExchange = new WebFilterExchange(exchange, chain);
+				return super.filter(exchange, chain).onErrorResume(AuthenticationException.class,
+						(e) -> this.authenticationFailureHandler.onAuthenticationFailure(webFilterExchange, e));
+			}
+
+			@Override
+			public void setAuthenticationFailureHandler(
+					ServerAuthenticationFailureHandler authenticationFailureHandler) {
+				super.setAuthenticationFailureHandler(authenticationFailureHandler);
+				this.authenticationFailureHandler = authenticationFailureHandler;
+			}
+
+		}
+
+		/**
+		 * Configures JWT Resource Server Support
+		 */
+		public class JwtSpec {
+
+			private ReactiveAuthenticationManager authenticationManager;
+
+			private ReactiveJwtDecoder jwtDecoder;
+
+			private Converter<Jwt, ? extends Mono<? extends AbstractAuthenticationToken>> jwtAuthenticationConverter = new ReactiveJwtAuthenticationConverterAdapter(
+					new JwtAuthenticationConverter());
+
+			/**
+			 * Configures the {@link ReactiveAuthenticationManager} to use
+			 * @param authenticationManager the authentication manager to use
+			 * @return the {@code JwtSpec} for additional configuration
+			 */
+			public JwtSpec authenticationManager(ReactiveAuthenticationManager authenticationManager) {
+				Assert.notNull(authenticationManager, "authenticationManager cannot be null");
+				this.authenticationManager = authenticationManager;
+				return this;
+			}
+
+			/**
+			 * Configures the {@link Converter} to use for converting a {@link Jwt} into
+			 * an {@link AbstractAuthenticationToken}.
+			 * @param jwtAuthenticationConverter the converter to use
+			 * @return the {@code JwtSpec} for additional configuration
+			 * @since 5.1.1
+			 */
+			public JwtSpec jwtAuthenticationConverter(
+					Converter<Jwt, ? extends Mono<? extends AbstractAuthenticationToken>> jwtAuthenticationConverter) {
+				Assert.notNull(jwtAuthenticationConverter, "jwtAuthenticationConverter cannot be null");
+				this.jwtAuthenticationConverter = jwtAuthenticationConverter;
+				return this;
+			}
+
+			/**
+			 * Configures the {@link ReactiveJwtDecoder} to use
+			 * @param jwtDecoder the decoder to use
+			 * @return the {@code JwtSpec} for additional configuration
+			 */
+			public JwtSpec jwtDecoder(ReactiveJwtDecoder jwtDecoder) {
+				this.jwtDecoder = jwtDecoder;
+				return this;
+			}
+
+			/**
+			 * Configures a {@link ReactiveJwtDecoder} that leverages the provided
+			 * {@link RSAPublicKey}
+			 * @param publicKey the public key to use.
+			 * @return the {@code JwtSpec} for additional configuration
+			 */
+			public JwtSpec publicKey(RSAPublicKey publicKey) {
+				this.jwtDecoder = new NimbusReactiveJwtDecoder(publicKey);
+				return this;
+			}
+
+			/**
+			 * Configures a {@link ReactiveJwtDecoder} using
+			 * <a target="_blank" href="https://tools.ietf.org/html/rfc7517">JSON Web Key
+			 * (JWK)</a> URL
+			 * @param jwkSetUri the URL to use.
+			 * @return the {@code JwtSpec} for additional configuration
+			 */
+			public JwtSpec jwkSetUri(String jwkSetUri) {
+				this.jwtDecoder = new NimbusReactiveJwtDecoder(jwkSetUri);
+				return this;
+			}
+
+			public OAuth2ResourceServerSpec and() {
+				return OAuth2ResourceServerSpec.this;
+			}
+
+			protected void configure(ServerHttpSecurity http) {
+				ReactiveAuthenticationManager authenticationManager = getAuthenticationManager();
+				AuthenticationWebFilter oauth2 = new BearerTokenAuthenticationWebFilter(authenticationManager);
+				oauth2.setServerAuthenticationConverter(OAuth2ResourceServerSpec.this.bearerTokenConverter);
+				oauth2.setAuthenticationFailureHandler(
+						new ServerAuthenticationEntryPointFailureHandler(OAuth2ResourceServerSpec.this.entryPoint));
+				http.addFilterAt(oauth2, SecurityWebFiltersOrder.AUTHENTICATION);
+			}
+
+			protected ReactiveJwtDecoder getJwtDecoder() {
+				return (this.jwtDecoder != null) ? this.jwtDecoder : getBean(ReactiveJwtDecoder.class);
+			}
+
+			protected Converter<Jwt, ? extends Mono<? extends AbstractAuthenticationToken>> getJwtAuthenticationConverter() {
+				return this.jwtAuthenticationConverter;
+			}
+
+			private ReactiveAuthenticationManager getAuthenticationManager() {
+				if (this.authenticationManager != null) {
+					return this.authenticationManager;
+				}
+				ReactiveJwtDecoder jwtDecoder = getJwtDecoder();
+				Converter<Jwt, ? extends Mono<? extends AbstractAuthenticationToken>> jwtAuthenticationConverter = getJwtAuthenticationConverter();
+				JwtReactiveAuthenticationManager authenticationManager = new JwtReactiveAuthenticationManager(
+						jwtDecoder);
+				authenticationManager.setJwtAuthenticationConverter(jwtAuthenticationConverter);
+				return authenticationManager;
+			}
+
+		}
+
+		/**
+		 * Configures Opaque Token Resource Server support
+		 *
+		 * @author Josh Cummings
+		 * @since 5.2
+		 */
+		public final class OpaqueTokenSpec {
+
+			private String introspectionUri;
+
+			private String clientId;
+
+			private String clientSecret;
+
+			private Supplier<ReactiveOpaqueTokenIntrospector> introspector;
+
+			private OpaqueTokenSpec() {
+			}
+
+			/**
+			 * Configures the URI of the Introspection endpoint
+			 * @param introspectionUri The URI of the Introspection endpoint
+			 * @return the {@code OpaqueTokenSpec} for additional configuration
+			 */
+			public OpaqueTokenSpec introspectionUri(String introspectionUri) {
+				Assert.hasText(introspectionUri, "introspectionUri cannot be empty");
+				this.introspectionUri = introspectionUri;
+				this.introspector = () -> new NimbusReactiveOpaqueTokenIntrospector(this.introspectionUri,
+						this.clientId, this.clientSecret);
+				return this;
+			}
+
+			/**
+			 * Configures the credentials for Introspection endpoint
+			 * @param clientId The clientId part of the credentials
+			 * @param clientSecret The clientSecret part of the credentials
+			 * @return the {@code OpaqueTokenSpec} for additional configuration
+			 */
+			public OpaqueTokenSpec introspectionClientCredentials(String clientId, String clientSecret) {
+				Assert.hasText(clientId, "clientId cannot be empty");
+				Assert.notNull(clientSecret, "clientSecret cannot be null");
+				this.clientId = clientId;
+				this.clientSecret = clientSecret;
+				this.introspector = () -> new NimbusReactiveOpaqueTokenIntrospector(this.introspectionUri,
+						this.clientId, this.clientSecret);
+				return this;
+			}
+
+			public OpaqueTokenSpec introspector(ReactiveOpaqueTokenIntrospector introspector) {
+				Assert.notNull(introspector, "introspector cannot be null");
+				this.introspector = () -> introspector;
+				return this;
+			}
+
+			/**
+			 * Allows method chaining to continue configuring the
+			 * {@link ServerHttpSecurity}
+			 * @return the {@link ServerHttpSecurity} to continue configuring
+			 */
+			public OAuth2ResourceServerSpec and() {
+				return OAuth2ResourceServerSpec.this;
+			}
+
+			protected ReactiveAuthenticationManager getAuthenticationManager() {
+				return new OpaqueTokenReactiveAuthenticationManager(getIntrospector());
+			}
+
+			protected ReactiveOpaqueTokenIntrospector getIntrospector() {
+				if (this.introspector != null) {
+					return this.introspector.get();
+				}
+				return getBean(ReactiveOpaqueTokenIntrospector.class);
+			}
+
+			protected void configure(ServerHttpSecurity http) {
+				ReactiveAuthenticationManager authenticationManager = getAuthenticationManager();
+				AuthenticationWebFilter oauth2 = new BearerTokenAuthenticationWebFilter(authenticationManager);
+				oauth2.setServerAuthenticationConverter(OAuth2ResourceServerSpec.this.bearerTokenConverter);
+				oauth2.setAuthenticationFailureHandler(
+						new ServerAuthenticationEntryPointFailureHandler(OAuth2ResourceServerSpec.this.entryPoint));
+				http.addFilterAt(oauth2, SecurityWebFiltersOrder.AUTHENTICATION);
+			}
+
+		}
+
 	}
 
 	/**
 	 * Configures anonymous authentication
+	 *
 	 * @author Ankur Pathak
 	 * @since 5.2.0
 	 */
 	public final class AnonymousSpec {
+
 		private String key;
+
 		private AnonymousAuthenticationWebFilter authenticationFilter;
+
 		private Object principal = "anonymousUser";
+
 		private List<GrantedAuthority> authorities = AuthorityUtils.createAuthorityList("ROLE_ANONYMOUS");
 
 		/**
-		 * Sets the key to identify tokens created for anonymous authentication. Default is a
-		 * secure randomly generated key.
-		 *
-		 * @param key the key to identify tokens created for anonymous authentication. Default
+		 * Sets the key to identify tokens created for anonymous authentication. Default
 		 * is a secure randomly generated key.
+		 * @param key the key to identify tokens created for anonymous authentication.
+		 * Default is a secure randomly generated key.
 		 * @return the {@link AnonymousSpec} for further customization of anonymous
 		 * authentication
 		 */
@@ -3942,7 +4027,6 @@ public class ServerHttpSecurity {
 
 		/**
 		 * Sets the principal for {@link Authentication} objects of anonymous users
-		 *
 		 * @param principal used for the {@link Authentication} object of anonymous users
 		 * @return the {@link AnonymousSpec} for further customization of anonymous
 		 * authentication
@@ -3953,9 +4037,9 @@ public class ServerHttpSecurity {
 		}
 
 		/**
-		 * Sets the {@link org.springframework.security.core.Authentication#getAuthorities()}
-		 * for anonymous users
-		 *
+		 * Sets the
+		 * {@link org.springframework.security.core.Authentication#getAuthorities()} for
+		 * anonymous users
 		 * @param authorities Sets the
 		 * {@link org.springframework.security.core.Authentication#getAuthorities()} for
 		 * anonymous users
@@ -3968,9 +4052,9 @@ public class ServerHttpSecurity {
 		}
 
 		/**
-		 * Sets the {@link org.springframework.security.core.Authentication#getAuthorities()}
-		 * for anonymous users
-		 *
+		 * Sets the
+		 * {@link org.springframework.security.core.Authentication#getAuthorities()} for
+		 * anonymous users
 		 * @param authorities Sets the
 		 * {@link org.springframework.security.core.Authentication#getAuthorities()} for
 		 * anonymous users (i.e. "ROLE_ANONYMOUS")
@@ -3982,18 +4066,15 @@ public class ServerHttpSecurity {
 		}
 
 		/**
-		 * Sets the {@link AnonymousAuthenticationWebFilter} used to populate an anonymous user.
-		 * If this is set, no attributes on the {@link AnonymousSpec} will be set on the
-		 * {@link AnonymousAuthenticationWebFilter}.
-		 *
-		 * @param authenticationFilter the {@link AnonymousAuthenticationWebFilter} used to
-		 * populate an anonymous user.
-		 *
+		 * Sets the {@link AnonymousAuthenticationWebFilter} used to populate an anonymous
+		 * user. If this is set, no attributes on the {@link AnonymousSpec} will be set on
+		 * the {@link AnonymousAuthenticationWebFilter}.
+		 * @param authenticationFilter the {@link AnonymousAuthenticationWebFilter} used
+		 * to populate an anonymous user.
 		 * @return the {@link AnonymousSpec} for further customization of anonymous
 		 * authentication
 		 */
-		public AnonymousSpec authenticationFilter(
-				AnonymousAuthenticationWebFilter authenticationFilter) {
+		public AnonymousSpec authenticationFilter(AnonymousAuthenticationWebFilter authenticationFilter) {
 			this.authenticationFilter = authenticationFilter;
 			return this;
 		}
@@ -4016,22 +4097,23 @@ public class ServerHttpSecurity {
 		}
 
 		protected void configure(ServerHttpSecurity http) {
-			if (authenticationFilter == null) {
-				authenticationFilter = new AnonymousAuthenticationWebFilter(getKey(), principal,
-						authorities);
+			if (this.authenticationFilter == null) {
+				this.authenticationFilter = new AnonymousAuthenticationWebFilter(getKey(), this.principal,
+						this.authorities);
 			}
-			http.addFilterAt(authenticationFilter, SecurityWebFiltersOrder.ANONYMOUS_AUTHENTICATION);
+			http.addFilterAt(this.authenticationFilter, SecurityWebFiltersOrder.ANONYMOUS_AUTHENTICATION);
 		}
 
 		private String getKey() {
-			if (key == null) {
-				key = UUID.randomUUID().toString();
+			if (this.key == null) {
+				this.key = UUID.randomUUID().toString();
 			}
-			return key;
+			return this.key;
 		}
 
-
-		private AnonymousSpec() {}
+		private AnonymousSpec() {
+		}
 
 	}
+
 }

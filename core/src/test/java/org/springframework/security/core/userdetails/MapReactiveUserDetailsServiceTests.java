@@ -13,37 +13,39 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.springframework.security.core.userdetails;
-
-
-import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 
 import org.junit.Test;
-
 import reactor.core.publisher.Mono;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+
 public class MapReactiveUserDetailsServiceTests {
+
+	// @formatter:off
 	private static final UserDetails USER_DETAILS = User.withUsername("user")
 			.password("password")
 			.roles("USER")
 			.build();
-
+	// @formatter:on
 	private MapReactiveUserDetailsService users = new MapReactiveUserDetailsService(Arrays.asList(USER_DETAILS));
 
-	@Test(expected = IllegalArgumentException.class)
+	@Test
 	public void constructorNullUsers() {
-		Collection<UserDetails> users = null;
-		new MapReactiveUserDetailsService(users);
+		assertThatIllegalArgumentException()
+				.isThrownBy(() -> new MapReactiveUserDetailsService((Collection<UserDetails>) null));
 	}
 
-	@Test(expected = IllegalArgumentException.class)
+	@Test
 	public void constructorEmptyUsers() {
-		Collection<UserDetails> users = Collections.emptyList();
-		new MapReactiveUserDetailsService(users);
+		assertThatIllegalArgumentException()
+				.isThrownBy(() -> new MapReactiveUserDetailsService(Collections.emptyList()));
 	}
 
 	@Test
@@ -55,33 +57,33 @@ public class MapReactiveUserDetailsServiceTests {
 
 	@Test
 	public void findByUsernameWhenFoundThenReturns() {
-		assertThat((users.findByUsername(USER_DETAILS.getUsername()).block())).isEqualTo(USER_DETAILS);
+		assertThat((this.users.findByUsername(USER_DETAILS.getUsername()).block())).isEqualTo(USER_DETAILS);
 	}
 
 	@Test
 	public void findByUsernameWhenDifferentCaseThenReturns() {
-		assertThat((users.findByUsername("uSeR").block())).isEqualTo(USER_DETAILS);
+		assertThat((this.users.findByUsername("uSeR").block())).isEqualTo(USER_DETAILS);
 	}
 
 	@Test
 	public void findByUsernameWhenClearCredentialsThenFindByUsernameStillHasCredentials() {
-		User foundUser = users.findByUsername(USER_DETAILS.getUsername()).cast(User.class).block();
+		User foundUser = this.users.findByUsername(USER_DETAILS.getUsername()).cast(User.class).block();
 		assertThat(foundUser.getPassword()).isNotEmpty();
 		foundUser.eraseCredentials();
 		assertThat(foundUser.getPassword()).isNull();
-
-		foundUser = users.findByUsername(USER_DETAILS.getUsername()).cast(User.class).block();
+		foundUser = this.users.findByUsername(USER_DETAILS.getUsername()).cast(User.class).block();
 		assertThat(foundUser.getPassword()).isNotEmpty();
 	}
 
 	@Test
 	public void findByUsernameWhenNotFoundThenEmpty() {
-		assertThat((users.findByUsername("notfound"))).isEqualTo(Mono.empty());
+		assertThat((this.users.findByUsername("notfound"))).isEqualTo(Mono.empty());
 	}
 
 	@Test
 	public void updatePassword() {
-		users.updatePassword(USER_DETAILS, "new").block();
-		assertThat(users.findByUsername(USER_DETAILS.getUsername()).block().getPassword()).isEqualTo("new");
+		this.users.updatePassword(USER_DETAILS, "new").block();
+		assertThat(this.users.findByUsername(USER_DETAILS.getUsername()).block().getPassword()).isEqualTo("new");
 	}
+
 }

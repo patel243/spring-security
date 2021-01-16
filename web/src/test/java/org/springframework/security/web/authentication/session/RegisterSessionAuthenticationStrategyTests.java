@@ -13,20 +13,23 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.springframework.security.web.authentication.session;
 
-import static org.mockito.Mockito.verify;
+package org.springframework.security.web.authentication.session;
 
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
+
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.session.SessionRegistry;
+
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.mockito.Mockito.verify;
 
 /**
  * @author Rob Winch
@@ -41,28 +44,28 @@ public class RegisterSessionAuthenticationStrategyTests {
 	private RegisterSessionAuthenticationStrategy authenticationStrategy;
 
 	private Authentication authentication;
+
 	private MockHttpServletRequest request;
+
 	private MockHttpServletResponse response;
 
 	@Before
 	public void setup() {
-		authenticationStrategy = new RegisterSessionAuthenticationStrategy(registry);
-		authentication = new TestingAuthenticationToken("user", "password", "ROLE_USER");
-		request = new MockHttpServletRequest();
-		response = new MockHttpServletResponse();
+		this.authenticationStrategy = new RegisterSessionAuthenticationStrategy(this.registry);
+		this.authentication = new TestingAuthenticationToken("user", "password", "ROLE_USER");
+		this.request = new MockHttpServletRequest();
+		this.response = new MockHttpServletResponse();
 	}
 
-	@Test(expected = IllegalArgumentException.class)
+	@Test
 	public void constructorNullRegistry() {
-		new RegisterSessionAuthenticationStrategy(null);
+		assertThatIllegalArgumentException().isThrownBy(() -> new RegisterSessionAuthenticationStrategy(null));
 	}
 
 	@Test
 	public void onAuthenticationRegistersSession() {
-		authenticationStrategy.onAuthentication(authentication, request, response);
-
-		verify(registry).registerNewSession(request.getSession().getId(),
-				authentication.getPrincipal());
+		this.authenticationStrategy.onAuthentication(this.authentication, this.request, this.response);
+		verify(this.registry).registerNewSession(this.request.getSession().getId(), this.authentication.getPrincipal());
 	}
 
 }

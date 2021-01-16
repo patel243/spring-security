@@ -27,20 +27,24 @@ import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyZeroInteractions;
-import static org.mockito.Mockito.when;
 
 /**
  * @author Rob Winch
  */
 @RunWith(MockitoJUnitRunner.class)
 public class LazyCsrfTokenRepositoryTests {
+
 	@Mock
 	CsrfTokenRepository delegate;
+
 	@Mock
 	HttpServletRequest request;
+
 	@Mock
 	HttpServletResponse response;
 
@@ -52,51 +56,46 @@ public class LazyCsrfTokenRepositoryTests {
 	@Before
 	public void setup() {
 		this.token = new DefaultCsrfToken("header", "param", "token");
-		when(this.delegate.generateToken(this.request)).thenReturn(this.token);
-		when(this.request.getAttribute(HttpServletResponse.class.getName()))
-				.thenReturn(this.response);
+		given(this.delegate.generateToken(this.request)).willReturn(this.token);
+		given(this.request.getAttribute(HttpServletResponse.class.getName())).willReturn(this.response);
 	}
 
-	@Test(expected = IllegalArgumentException.class)
+	@Test
 	public void constructNullDelegateThrowsIllegalArgumentException() {
-		new LazyCsrfTokenRepository(null);
+		assertThatIllegalArgumentException().isThrownBy(() -> new LazyCsrfTokenRepository(null));
 	}
 
-	@Test(expected = IllegalArgumentException.class)
+	@Test
 	public void generateTokenNullResponseAttribute() {
-		this.repository.generateToken(mock(HttpServletRequest.class));
+		assertThatIllegalArgumentException()
+				.isThrownBy(() -> this.repository.generateToken(mock(HttpServletRequest.class)));
 	}
 
 	@Test
 	public void generateTokenGetTokenSavesToken() {
 		CsrfToken newToken = this.repository.generateToken(this.request);
-
 		newToken.getToken();
-
 		verify(this.delegate).saveToken(this.token, this.request, this.response);
 	}
 
 	@Test
 	public void saveNonNullDoesNothing() {
 		this.repository.saveToken(this.token, this.request, this.response);
-
 		verifyZeroInteractions(this.delegate);
 	}
 
 	@Test
 	public void saveNullDelegates() {
 		this.repository.saveToken(null, this.request, this.response);
-
 		verify(this.delegate).saveToken(null, this.request, this.response);
 	}
 
 	@Test
 	public void loadTokenDelegates() {
-		when(this.delegate.loadToken(this.request)).thenReturn(this.token);
-
+		given(this.delegate.loadToken(this.request)).willReturn(this.token);
 		CsrfToken loadToken = this.repository.loadToken(this.request);
 		assertThat(loadToken).isSameAs(this.token);
-
 		verify(this.delegate).loadToken(this.request);
 	}
+
 }

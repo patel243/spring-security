@@ -65,7 +65,7 @@ class AuthorizeRequestsDslTests {
 
         this.mockMvc.get("/private")
                 .andExpect {
-                    status { isForbidden }
+                    status { isForbidden() }
                 }
     }
 
@@ -75,7 +75,7 @@ class AuthorizeRequestsDslTests {
 
         this.mockMvc.get("/path")
                 .andExpect {
-                    status { isOk }
+                    status { isOk() }
                 }
     }
 
@@ -85,12 +85,12 @@ class AuthorizeRequestsDslTests {
 
         this.mockMvc.post("/onlyPostPermitted") { with(csrf()) }
             .andExpect {
-                status { isOk }
+                status { isOk() }
             }
 
         this.mockMvc.get("/onlyPostPermitted")
             .andExpect {
-                status { isForbidden }
+                status { isForbidden() }
             }
     }
 
@@ -125,7 +125,7 @@ class AuthorizeRequestsDslTests {
 
         this.mockMvc.get("/private")
                 .andExpect {
-                    status { isForbidden }
+                    status { isForbidden() }
                 }
     }
 
@@ -135,17 +135,17 @@ class AuthorizeRequestsDslTests {
 
         this.mockMvc.get("/path")
                 .andExpect {
-                    status { isOk }
+                    status { isOk() }
                 }
 
         this.mockMvc.get("/path.html")
                 .andExpect {
-                    status { isOk }
+                    status { isOk() }
                 }
 
         this.mockMvc.get("/path/")
                 .andExpect {
-                    status { isOk }
+                    status { isOk() }
                 }
     }
 
@@ -182,12 +182,12 @@ class AuthorizeRequestsDslTests {
 
         this.mockMvc.get("/user/user")
                 .andExpect {
-                    status { isOk }
+                    status { isOk() }
                 }
 
         this.mockMvc.get("/user/deny")
                 .andExpect {
-                    status { isForbidden }
+                    status { isForbidden() }
                 }
     }
 
@@ -217,7 +217,7 @@ class AuthorizeRequestsDslTests {
         this.mockMvc.get("/") {
             with(httpBasic("admin", "password"))
         }.andExpect {
-            status { isOk }
+            status { isOk() }
         }
     }
 
@@ -228,7 +228,7 @@ class AuthorizeRequestsDslTests {
         this.mockMvc.get("/") {
             with(httpBasic("user", "password"))
         }.andExpect {
-            status { isForbidden }
+            status { isForbidden() }
         }
     }
 
@@ -264,6 +264,142 @@ class AuthorizeRequestsDslTests {
                     .roles("ADMIN")
                     .build()
             return InMemoryUserDetailsManager(userDetails, adminDetails)
+        }
+    }
+
+    @Test
+    fun `request when user has some allowed roles then responds with OK`() {
+        this.spring.register(HasAnyRoleConfig::class.java).autowire()
+
+        this.mockMvc.get("/") {
+            with(httpBasic("user", "password"))
+        }.andExpect {
+            status { isOk() }
+        }
+
+        this.mockMvc.get("/") {
+            with(httpBasic("admin", "password"))
+        }.andExpect {
+            status { isOk() }
+        }
+    }
+
+    @Test
+    fun `request when user does not have any allowed roles then responds with forbidden`() {
+        this.spring.register(HasAnyRoleConfig::class.java).autowire()
+
+        this.mockMvc.get("/") {
+            with(httpBasic("other", "password"))
+        }.andExpect {
+            status { isForbidden() }
+        }
+    }
+
+    @EnableWebSecurity
+    @EnableWebMvc
+    open class HasAnyRoleConfig : WebSecurityConfigurerAdapter() {
+        override fun configure(http: HttpSecurity) {
+            http {
+                authorizeRequests {
+                    authorize("/**", hasAnyRole("ADMIN", "USER"))
+                }
+                httpBasic { }
+            }
+        }
+
+        @RestController
+        internal class PathController {
+            @GetMapping("/")
+            fun index() {
+            }
+        }
+
+        @Bean
+        override fun userDetailsService(): UserDetailsService {
+            val userDetails = User.withDefaultPasswordEncoder()
+                    .username("user")
+                    .password("password")
+                    .roles("USER")
+                    .build()
+            val admin1Details = User.withDefaultPasswordEncoder()
+                    .username("admin")
+                    .password("password")
+                    .roles("ADMIN")
+                    .build()
+            val admin2Details = User.withDefaultPasswordEncoder()
+                    .username("other")
+                    .password("password")
+                    .roles("OTHER")
+                    .build()
+            return InMemoryUserDetailsManager(userDetails, admin1Details, admin2Details)
+        }
+    }
+
+    @Test
+    fun `request when user has some allowed authorities then responds with OK`() {
+        this.spring.register(HasAnyAuthorityConfig::class.java).autowire()
+
+        this.mockMvc.get("/") {
+            with(httpBasic("user", "password"))
+        }.andExpect {
+            status { isOk() }
+        }
+
+        this.mockMvc.get("/") {
+            with(httpBasic("admin", "password"))
+        }.andExpect {
+            status { isOk() }
+        }
+    }
+
+    @Test
+    fun `request when user does not have any allowed authorities then responds with forbidden`() {
+        this.spring.register(HasAnyAuthorityConfig::class.java).autowire()
+
+        this.mockMvc.get("/") {
+            with(httpBasic("other", "password"))
+        }.andExpect {
+            status { isForbidden() }
+        }
+    }
+
+    @EnableWebSecurity
+    @EnableWebMvc
+    open class HasAnyAuthorityConfig : WebSecurityConfigurerAdapter() {
+        override fun configure(http: HttpSecurity) {
+            http {
+                authorizeRequests {
+                    authorize("/**", hasAnyAuthority("ROLE_ADMIN", "ROLE_USER"))
+                }
+                httpBasic { }
+            }
+        }
+
+        @RestController
+        internal class PathController {
+            @GetMapping("/")
+            fun index() {
+            }
+        }
+
+        @Bean
+        override fun userDetailsService(): UserDetailsService {
+            val userDetails = User.withDefaultPasswordEncoder()
+                    .username("user")
+                    .password("password")
+                    .authorities("ROLE_USER")
+                    .build()
+            val admin1Details = User.withDefaultPasswordEncoder()
+                    .username("admin")
+                    .password("password")
+                    .authorities("ROLE_ADMIN")
+                    .build()
+            val admin2Details = User.withDefaultPasswordEncoder()
+                    .username("other")
+                    .password("password")
+                    .authorities("ROLE_OTHER")
+                    .build()
+            return InMemoryUserDetailsManager(userDetails, admin1Details, admin2Details)
         }
     }
 
@@ -333,12 +469,12 @@ class AuthorizeRequestsDslTests {
 
         this.mockMvc.get("/path")
             .andExpect {
-                status { isOk }
+                status { isOk() }
             }
 
         this.mockMvc.put("/path") { with(csrf()) }
             .andExpect {
-                status { isForbidden }
+                status { isForbidden() }
             }
     }
 

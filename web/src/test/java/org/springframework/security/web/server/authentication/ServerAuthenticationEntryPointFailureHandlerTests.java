@@ -30,7 +30,8 @@ import org.springframework.web.server.ServerWebExchange;
 import org.springframework.web.server.WebFilterChain;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.when;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.mockito.BDDMockito.given;
 
 /**
  * @author Rob Winch
@@ -38,10 +39,13 @@ import static org.mockito.Mockito.when;
  */
 @RunWith(MockitoJUnitRunner.class)
 public class ServerAuthenticationEntryPointFailureHandlerTests {
+
 	@Mock
 	private ServerAuthenticationEntryPoint authenticationEntryPoint;
+
 	@Mock
 	private ServerWebExchange exchange;
+
 	@Mock
 	private WebFilterChain chain;
 
@@ -51,18 +55,17 @@ public class ServerAuthenticationEntryPointFailureHandlerTests {
 	@InjectMocks
 	private ServerAuthenticationEntryPointFailureHandler handler;
 
-	@Test(expected = IllegalArgumentException.class)
+	@Test
 	public void constructorWhenNullEntryPointThenException() {
-		this.authenticationEntryPoint = null;
-		new ServerAuthenticationEntryPointFailureHandler(this.authenticationEntryPoint);
+		assertThatIllegalArgumentException().isThrownBy(() -> new ServerAuthenticationEntryPointFailureHandler(null));
 	}
 
 	@Test
 	public void onAuthenticationFailureWhenInvokedThenDelegatesToEntryPoint() {
 		Mono<Void> result = Mono.empty();
 		BadCredentialsException e = new BadCredentialsException("Failed");
-		when(this.authenticationEntryPoint.commence(this.exchange, e)).thenReturn(result);
-
+		given(this.authenticationEntryPoint.commence(this.exchange, e)).willReturn(result);
 		assertThat(this.handler.onAuthenticationFailure(this.filterExchange, e)).isEqualTo(result);
 	}
+
 }

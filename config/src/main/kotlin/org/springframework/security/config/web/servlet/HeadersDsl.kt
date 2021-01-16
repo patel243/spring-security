@@ -19,6 +19,7 @@ package org.springframework.security.config.web.servlet
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configurers.HeadersConfigurer
 import org.springframework.security.config.web.servlet.headers.*
+import org.springframework.security.web.header.HeaderWriter
 import org.springframework.security.web.header.writers.*
 import org.springframework.security.web.header.writers.frameoptions.XFrameOptionsHeaderWriter
 
@@ -40,6 +41,9 @@ class HeadersDsl {
     private var contentSecurityPolicy: ((HeadersConfigurer<HttpSecurity>.ContentSecurityPolicyConfig) -> Unit)? = null
     private var referrerPolicy: ((HeadersConfigurer<HttpSecurity>.ReferrerPolicyConfig) -> Unit)? = null
     private var featurePolicyDirectives: String? = null
+    private var permissionsPolicy: ((HeadersConfigurer<HttpSecurity>.PermissionsPolicyConfig) -> Unit)? = null
+    private var disabled = false
+    private var headerWriters = mutableListOf<HeaderWriter>()
 
     var defaultsDisabled: Boolean? = null
 
@@ -161,6 +165,40 @@ class HeadersDsl {
         this.featurePolicyDirectives = policyDirectives
     }
 
+    /**
+     * Allows configuration for <a href="https://w3c.github.io/webappsec-permissions-policy/">Permissions
+     * Policy</a>.
+     *
+     * <p>
+     * Calling this method automatically enables (includes) the Permissions-Policy
+     * header in the response using the supplied policy directive(s).
+     * <p>
+     *
+     * @param policyDirectives policyDirectives the security policy directive(s)
+     */
+    fun permissionsPolicy(permissionsPolicyConfig: PermissionsPolicyDsl.() -> Unit) {
+        this.permissionsPolicy = PermissionsPolicyDsl().apply(permissionsPolicyConfig).get()
+    }
+
+    /**
+     * Adds a [HeaderWriter] instance.
+     *
+     * @param headerWriter the [HeaderWriter] instance to add
+     * @since 5.4
+     */
+    fun addHeaderWriter(headerWriter: HeaderWriter) {
+        this.headerWriters.add(headerWriter)
+    }
+
+    /**
+     * Disable all HTTP security headers.
+     *
+     * @since 5.4
+     */
+    fun disable() {
+        disabled = true
+    }
+
     internal fun get(): (HeadersConfigurer<HttpSecurity>) -> Unit {
         return { headers ->
             defaultsDisabled?.also {
@@ -194,6 +232,15 @@ class HeadersDsl {
             }
             featurePolicyDirectives?.also {
                 headers.featurePolicy(featurePolicyDirectives)
+            }
+            permissionsPolicy?.also {
+                headers.permissionsPolicy(permissionsPolicy)
+            }
+            headerWriters.forEach { headerWriter ->
+                headers.addHeaderWriter(headerWriter)
+            }
+            if (disabled) {
+                headers.disable()
             }
         }
     }

@@ -16,11 +16,13 @@
 
 package org.springframework.security.cas.web;
 
-import static org.assertj.core.api.Assertions.*;
-
 import org.junit.Test;
+
 import org.springframework.security.cas.SamlServiceProperties;
 import org.springframework.security.cas.ServiceProperties;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 
 /**
  * Tests {@link ServiceProperties}.
@@ -28,32 +30,20 @@ import org.springframework.security.cas.ServiceProperties;
  * @author Ben Alex
  */
 public class ServicePropertiesTests {
-	// ~ Methods
-	// ========================================================================================================
 
-	@Test(expected = IllegalArgumentException.class)
+	@Test
 	public void detectsMissingService() throws Exception {
 		ServiceProperties sp = new ServiceProperties();
-		sp.afterPropertiesSet();
+		assertThatIllegalArgumentException().isThrownBy(sp::afterPropertiesSet);
 	}
 
 	@Test
 	public void nullServiceWhenAuthenticateAllTokens() throws Exception {
 		ServiceProperties sp = new ServiceProperties();
 		sp.setAuthenticateAllArtifacts(true);
-		try {
-			sp.afterPropertiesSet();
-			fail("Expected Exception");
-		}
-		catch (IllegalArgumentException success) {
-		}
+		assertThatIllegalArgumentException().isThrownBy(sp::afterPropertiesSet);
 		sp.setAuthenticateAllArtifacts(false);
-		try {
-			sp.afterPropertiesSet();
-			fail("Expected Exception");
-		}
-		catch (IllegalArgumentException success) {
-		}
+		assertThatIllegalArgumentException().isThrownBy(sp::afterPropertiesSet);
 	}
 
 	@Test
@@ -68,11 +58,10 @@ public class ServicePropertiesTests {
 			assertThat(sp.getArtifactParameter()).isEqualTo("notticket");
 			sp.setServiceParameter("notservice");
 			assertThat(sp.getServiceParameter()).isEqualTo("notservice");
-
 			sp.setService("https://mycompany.com/service");
 			assertThat(sp.getService()).isEqualTo("https://mycompany.com/service");
-
 			sp.afterPropertiesSet();
 		}
 	}
+
 }

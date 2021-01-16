@@ -13,11 +13,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.springframework.security.oauth2.core;
 
 import org.junit.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 
 /**
  * Tests for {@link AuthorizationGrantType}.
@@ -26,9 +28,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 public class AuthorizationGrantTypeTests {
 
-	@Test(expected = IllegalArgumentException.class)
+	@Test
 	public void constructorWhenValueIsNullThenThrowIllegalArgumentException() {
-		new AuthorizationGrantType(null);
+		assertThatIllegalArgumentException().isThrownBy(() -> new AuthorizationGrantType(null));
 	}
 
 	@Test
@@ -50,4 +52,5 @@ public class AuthorizationGrantTypeTests {
 	public void getValueWhenPasswordGrantTypeThenReturnPassword() {
 		assertThat(AuthorizationGrantType.PASSWORD.getValue()).isEqualTo("password");
 	}
+
 }
