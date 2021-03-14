@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2020 the original author or authors.
+ * Copyright 2002-2021 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,8 @@
 package org.springframework.security.saml2.provider.service.web;
 
 import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 
 import javax.servlet.FilterChain;
 import javax.servlet.ServletException;
@@ -42,9 +44,13 @@ import org.springframework.web.filter.OncePerRequestFilter;
  */
 public final class Saml2MetadataFilter extends OncePerRequestFilter {
 
+	public static final String DEFAULT_METADATA_FILE_NAME = "saml-{registrationId}-metadata.xml";
+
 	private final Converter<HttpServletRequest, RelyingPartyRegistration> relyingPartyRegistrationConverter;
 
 	private final Saml2MetadataResolver saml2MetadataResolver;
+
+	private String metadataFilename = DEFAULT_METADATA_FILE_NAME;
 
 	private RequestMatcher requestMatcher = new AntPathRequestMatcher(
 			"/saml2/service-provider-metadata/{registrationId}");
@@ -78,8 +84,10 @@ public final class Saml2MetadataFilter extends OncePerRequestFilter {
 	private void writeMetadataToResponse(HttpServletResponse response, String registrationId, String metadata)
 			throws IOException {
 		response.setContentType(MediaType.APPLICATION_XML_VALUE);
-		response.setHeader(HttpHeaders.CONTENT_DISPOSITION,
-				"attachment; filename=\"saml-" + registrationId + "-metadata.xml\"");
+		String fileName = this.metadataFilename.replace("{registrationId}", registrationId);
+		String encodedFileName = URLEncoder.encode(fileName, StandardCharsets.UTF_8.name());
+		String format = "attachment; filename=\"%s\"; filename*=UTF-8''%s";
+		response.setHeader(HttpHeaders.CONTENT_DISPOSITION, String.format(format, fileName, encodedFileName));
 		response.setContentLength(metadata.length());
 		response.getWriter().write(metadata);
 	}
@@ -92,6 +100,22 @@ public final class Saml2MetadataFilter extends OncePerRequestFilter {
 	public void setRequestMatcher(RequestMatcher requestMatcher) {
 		Assert.notNull(requestMatcher, "requestMatcher cannot be null");
 		this.requestMatcher = requestMatcher;
+	}
+
+	/**
+	 * Sets the metadata filename template containing the {@code {registrationId}}
+	 * template variable.
+	 *
+	 * <br />
+	 * The default value is {@code saml-{registrationId}-metadata.xml}
+	 * @param metadataFilename metadata filename, must contain a {registrationId}
+	 * @since 5.5
+	 */
+	public void setMetadataFilename(String metadataFilename) {
+		Assert.hasText(metadataFilename, "metadataFilename cannot be empty");
+		Assert.isTrue(metadataFilename.contains("{registrationId}"),
+				"metadataFilename must contain a {registrationId} match variable");
+		this.metadataFilename = metadataFilename;
 	}
 
 }

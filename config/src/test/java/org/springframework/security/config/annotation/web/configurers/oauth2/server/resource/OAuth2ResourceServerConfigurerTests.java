@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2020 the original author or authors.
+ * Copyright 2002-2021 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -33,6 +33,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 import javax.annotation.PreDestroy;
+import javax.servlet.http.HttpServletRequest;
 
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
@@ -78,6 +79,7 @@ import org.springframework.security.authentication.AuthenticationEventPublisher;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationManagerResolver;
 import org.springframework.security.authentication.AuthenticationProvider;
+import org.springframework.security.authentication.AuthenticationServiceException;
 import org.springframework.security.config.annotation.method.configuration.EnableGlobalMethodSecurity;
 import org.springframework.security.config.annotation.web.HttpSecurityBuilder;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -104,11 +106,12 @@ import org.springframework.security.oauth2.jwt.BadJwtException;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtClaimNames;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
-import org.springframework.security.oauth2.jwt.JwtException;
 import org.springframework.security.oauth2.jwt.JwtTimestampValidator;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.TestJwts;
+import org.springframework.security.oauth2.server.resource.BearerTokenAuthenticationToken;
 import org.springframework.security.oauth2.server.resource.authentication.BearerTokenAuthentication;
+import org.springframework.security.oauth2.server.resource.authentication.BearerTokenAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 import org.springframework.security.oauth2.server.resource.authentication.JwtIssuerAuthenticationManagerResolver;
@@ -260,26 +263,24 @@ public class OAuth2ResourceServerConfigurerTests {
 	}
 
 	@Test
-	public void getWhenUsingDefaultsWithBadJwkEndpointThenInvalidToken() throws Exception {
+	public void getWhenUsingDefaultsWithBadJwkEndpointThen500() throws Exception {
 		this.spring.register(RestOperationsConfig.class, DefaultConfig.class).autowire();
 		mockRestOperations("malformed");
 		String token = this.token("ValidNoScopes");
 		// @formatter:off
-		this.mvc.perform(get("/").with(bearerToken(token)))
-				.andExpect(status().isUnauthorized())
-				.andExpect(header().string("WWW-Authenticate", "Bearer"));
+		assertThatExceptionOfType(AuthenticationServiceException.class)
+				.isThrownBy(() -> this.mvc.perform(get("/").with(bearerToken(token))));
 		// @formatter:on
 	}
 
 	@Test
-	public void getWhenUsingDefaultsWithUnavailableJwkEndpointThenInvalidToken() throws Exception {
+	public void getWhenUsingDefaultsWithUnavailableJwkEndpointThen500() throws Exception {
 		this.spring.register(WebServerConfig.class, JwkSetUriConfig.class).autowire();
 		this.web.shutdown();
 		String token = this.token("ValidNoScopes");
 		// @formatter:off
-		this.mvc.perform(get("/").with(bearerToken(token)))
-				.andExpect(status().isUnauthorized())
-				.andExpect(header().string("WWW-Authenticate", "Bearer"));
+		assertThatExceptionOfType(AuthenticationServiceException.class)
+				.isThrownBy(() -> this.mvc.perform(get("/").with(bearerToken(token))));
 		// @formatter:on
 	}
 
@@ -723,6 +724,71 @@ public class OAuth2ResourceServerConfigurerTests {
 	}
 
 	@Test
+	public void getBearerTokenAuthenticationConverterWhenDuplicateConverterBeansAndAnotherOnTheDslThenTheDslOneIsUsed() {
+		BearerTokenAuthenticationConverter converterBean = new BearerTokenAuthenticationConverter();
+		BearerTokenAuthenticationConverter converter = new BearerTokenAuthenticationConverter();
+		GenericWebApplicationContext context = new GenericWebApplicationContext();
+		context.registerBean("converterOne", BearerTokenAuthenticationConverter.class, () -> converterBean);
+		context.registerBean("converterTwo", BearerTokenAuthenticationConverter.class, () -> converterBean);
+		this.spring.context(context).autowire();
+		OAuth2ResourceServerConfigurer oauth2 = new OAuth2ResourceServerConfigurer(context);
+		oauth2.authenticationConverter(converter);
+		assertThat(oauth2.getAuthenticationConverter()).isEqualTo(converter);
+	}
+
+	@Test
+	public void getBearerTokenAuthenticationConverterWhenDuplicateConverterBeansThenWiringException() {
+		assertThatExceptionOfType(BeanCreationException.class).isThrownBy(() -> this.spring
+				.register(MultipleBearerTokenAuthenticationConverterBeansConfig.class, JwtDecoderConfig.class)
+				.autowire()).withRootCauseInstanceOf(NoUniqueBeanDefinitionException.class);
+	}
+
+	@Test
+	public void getBearerTokenAuthenticationConverterWhenConverterBeanAndAnotherOnTheDslThenTheDslOneIsUsed() {
+		BearerTokenAuthenticationConverter converter = new BearerTokenAuthenticationConverter();
+		BearerTokenAuthenticationConverter converterBean = new BearerTokenAuthenticationConverter();
+		GenericWebApplicationContext context = new GenericWebApplicationContext();
+		context.registerBean(BearerTokenAuthenticationConverter.class, () -> converterBean);
+		this.spring.context(context).autowire();
+		OAuth2ResourceServerConfigurer oauth2 = new OAuth2ResourceServerConfigurer(context);
+		oauth2.authenticationConverter(converter);
+		assertThat(oauth2.getAuthenticationConverter()).isEqualTo(converter);
+	}
+
+	@Test
+	public void getBearerTokenAuthenticationConverterWhenNoConverterSpecifiedThenTheDefaultIsUsed() {
+		ApplicationContext context = this.spring.context(new GenericWebApplicationContext()).getContext();
+		OAuth2ResourceServerConfigurer oauth2 = new OAuth2ResourceServerConfigurer(context);
+		assertThat(oauth2.getAuthenticationConverter()).isInstanceOf(BearerTokenAuthenticationConverter.class);
+	}
+
+	@Test
+	public void getBearerTokenAuthenticationConverterWhenConverterBeanRegisteredThenBeanIsUsed() {
+		BearerTokenAuthenticationConverter converterBean = new BearerTokenAuthenticationConverter();
+		GenericWebApplicationContext context = new GenericWebApplicationContext();
+		context.registerBean(BearerTokenAuthenticationConverter.class, () -> converterBean);
+		this.spring.context(context).autowire();
+		OAuth2ResourceServerConfigurer oauth2 = new OAuth2ResourceServerConfigurer(context);
+		assertThat(oauth2.getAuthenticationConverter()).isEqualTo(converterBean);
+
+	}
+
+	@Test
+	public void getBearerTokenAuthenticationConverterWhenOnlyResolverBeanRegisteredThenUseTheResolver() {
+		HttpServletRequest servletRequest = mock(HttpServletRequest.class);
+		BearerTokenResolver resolverBean = (request) -> "bearer customToken";
+		GenericWebApplicationContext context = new GenericWebApplicationContext();
+		context.registerBean(BearerTokenResolver.class, () -> resolverBean);
+		this.spring.context(context).autowire();
+		OAuth2ResourceServerConfigurer oauth2 = new OAuth2ResourceServerConfigurer(context);
+		BearerTokenAuthenticationToken bearerTokenAuthenticationToken = (BearerTokenAuthenticationToken) oauth2
+				.getAuthenticationConverter().convert(servletRequest);
+		String token = bearerTokenAuthenticationToken.getToken();
+		assertThat(token).isEqualTo("bearer customToken");
+
+	}
+
+	@Test
 	public void requestWhenCustomJwtDecoderWiredOnDslThenUsed() throws Exception {
 		this.spring.register(CustomJwtDecoderOnDsl.class, BasicController.class).autowire();
 		CustomJwtDecoderOnDsl config = this.spring.getContext().getBean(CustomJwtDecoderOnDsl.class);
@@ -825,7 +891,7 @@ public class OAuth2ResourceServerConfigurerTests {
 	public void requestWhenRealmNameConfiguredThenUsesOnUnauthenticated() throws Exception {
 		this.spring.register(RealmNameConfiguredOnEntryPoint.class, JwtDecoderConfig.class).autowire();
 		JwtDecoder decoder = this.spring.getContext().getBean(JwtDecoder.class);
-		given(decoder.decode(anyString())).willThrow(JwtException.class);
+		given(decoder.decode(anyString())).willThrow(BadJwtException.class);
 		// @formatter:off
 		this.mvc.perform(get("/authenticated").with(bearerToken("invalid_token")))
 				.andExpect(status().isUnauthorized())
@@ -1092,7 +1158,7 @@ public class OAuth2ResourceServerConfigurerTests {
 	public void requestWhenBasicAndResourceServerEntryPointsThenMatchedByRequest() throws Exception {
 		this.spring.register(BasicAndResourceServerConfig.class, JwtDecoderConfig.class).autowire();
 		JwtDecoder decoder = this.spring.getContext().getBean(JwtDecoder.class);
-		given(decoder.decode(anyString())).willThrow(JwtException.class);
+		given(decoder.decode(anyString())).willThrow(BadJwtException.class);
 		// @formatter:off
 		this.mvc.perform(get("/authenticated").with(httpBasic("some", "user")))
 				.andExpect(status().isUnauthorized())
@@ -1110,7 +1176,7 @@ public class OAuth2ResourceServerConfigurerTests {
 	public void requestWhenFormLoginAndResourceServerEntryPointsThenSessionCreatedByRequest() throws Exception {
 		this.spring.register(FormAndResourceServerConfig.class, JwtDecoderConfig.class).autowire();
 		JwtDecoder decoder = this.spring.getContext().getBean(JwtDecoder.class);
-		given(decoder.decode(anyString())).willThrow(JwtException.class);
+		given(decoder.decode(anyString())).willThrow(BadJwtException.class);
 		// @formatter:off
 		MvcResult result = this.mvc.perform(get("/authenticated")
 				.header("Accept", "text/html"))
@@ -1869,6 +1935,32 @@ public class OAuth2ResourceServerConfigurerTests {
 			DefaultBearerTokenResolver resolver = new DefaultBearerTokenResolver();
 			resolver.setAllowFormEncodedBodyParameter(true);
 			return resolver;
+		}
+
+	}
+
+	@EnableWebSecurity
+	static class MultipleBearerTokenAuthenticationConverterBeansConfig extends WebSecurityConfigurerAdapter {
+
+		@Override
+		protected void configure(HttpSecurity http) throws Exception {
+			// @formatter:off
+			http
+				.oauth2ResourceServer()
+					.jwt();
+			// @formatter:on
+		}
+
+		@Bean
+		BearerTokenAuthenticationConverter converterOne() {
+			BearerTokenAuthenticationConverter converter = new BearerTokenAuthenticationConverter();
+			return converter;
+		}
+
+		@Bean
+		BearerTokenAuthenticationConverter converterTwo() {
+			BearerTokenAuthenticationConverter converter = new BearerTokenAuthenticationConverter();
+			return converter;
 		}
 
 	}

@@ -21,6 +21,7 @@ import java.security.cert.X509Certificate;
 import org.opensaml.security.x509.X509Support;
 
 import org.springframework.context.annotation.Bean;
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configuration.WebSecurityConfigurerAdapter;
@@ -36,9 +37,9 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
 	RelyingPartyRegistrationRepository relyingPartyRegistrationRepository() {
 		RelyingPartyRegistration relyingPartyRegistration = RelyingPartyRegistration.withRegistrationId("one")
 				.assertingPartyDetails((party) -> party
-					.entityId("https://simplesaml-for-spring-saml.cfapps.io/saml2/idp/metadata.php")
+					.entityId("https://simplesaml-for-spring-saml.apps.pcfone.io/saml2/idp/metadata.php")
 					.verificationX509Credentials((c) -> c.add(assertingPartyVerifyingCredential()))
-					.singleSignOnServiceLocation("https://simplesaml-for-spring-saml.cfapps.io/saml2/idp/SSOService.php")
+					.singleSignOnServiceLocation("https://simplesaml-for-spring-saml.apps.pcfone.io/saml2/idp/SSOService.php")
 					.wantAuthnRequestsSigned(false)
 				)
 				.build();
@@ -52,9 +53,7 @@ public class SecurityConfig extends WebSecurityConfigurerAdapter {
 			.authorizeRequests((authz) -> authz
 				.anyRequest().authenticated()
 			)
-			.saml2Login((saml2) -> saml2
-				.loginProcessingUrl("/sample/jc/saml2/sso/{registrationId}")
-			);
+			.saml2Login(Customizer.withDefaults());
 		// @formatter:on
 	}
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2020 the original author or authors.
+ * Copyright 2002-2021 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,11 +16,15 @@
 
 package org.springframework.security.saml2.provider.service.web;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+
 import javax.servlet.FilterChain;
 
 import org.junit.Before;
 import org.junit.Test;
 
+import org.springframework.http.HttpHeaders;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.saml2.core.TestSaml2X509Credentials;
@@ -31,6 +35,7 @@ import org.springframework.security.saml2.provider.service.registration.TestRely
 import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
@@ -116,8 +121,37 @@ public class Saml2MetadataFilterTests {
 	}
 
 	@Test
+	public void doFilterWhenSetMetadataFilenameThenUses() throws Exception {
+		RelyingPartyRegistration validRegistration = TestRelyingPartyRegistrations.full().build();
+		String testMetadataFilename = "test-{registrationId}-metadata.xml";
+		String fileName = testMetadataFilename.replace("{registrationId}", validRegistration.getRegistrationId());
+		String encodedFileName = URLEncoder.encode(fileName, StandardCharsets.UTF_8.name());
+		String generatedMetadata = "<xml>test</xml>";
+		this.request.setPathInfo("/saml2/service-provider-metadata/registration-id");
+		given(this.resolver.resolve(validRegistration)).willReturn(generatedMetadata);
+		this.filter = new Saml2MetadataFilter((request) -> validRegistration, this.resolver);
+		this.filter.setMetadataFilename(testMetadataFilename);
+		this.filter.doFilter(this.request, this.response, this.chain);
+		assertThat(this.response.getHeaderValue(HttpHeaders.CONTENT_DISPOSITION)).asString()
+				.isEqualTo("attachment; filename=\"%s\"; filename*=UTF-8''%s", fileName, encodedFileName);
+	}
+
+	@Test
 	public void setRequestMatcherWhenNullThenIllegalArgument() {
 		assertThatIllegalArgumentException().isThrownBy(() -> this.filter.setRequestMatcher(null));
+	}
+
+	@Test
+	public void setMetadataFilenameWhenEmptyThenThrowsException() {
+		assertThatExceptionOfType(IllegalArgumentException.class).isThrownBy(() -> this.filter.setMetadataFilename(" "))
+				.withMessage("metadataFilename cannot be empty");
+	}
+
+	@Test
+	public void setMetadataFilenameWhenMissingRegistrationIdVariableThenThrowsException() {
+		assertThatExceptionOfType(IllegalArgumentException.class)
+				.isThrownBy(() -> this.filter.setMetadataFilename("metadata-filename.xml"))
+				.withMessage("metadataFilename must contain a {registrationId} match variable");
 	}
 
 }
