@@ -176,13 +176,11 @@ public class WebSecurityConfiguration implements ImportAware, BeanClassLoaderAwa
 
 	@Autowired(required = false)
 	void setFilterChains(List<SecurityFilterChain> securityFilterChains) {
-		securityFilterChains.sort(AnnotationAwareOrderComparator.INSTANCE);
 		this.securityFilterChains = securityFilterChains;
 	}
 
 	@Autowired(required = false)
 	void setWebSecurityCustomizers(List<WebSecurityCustomizer> webSecurityCustomizers) {
-		webSecurityCustomizers.sort(AnnotationAwareOrderComparator.INSTANCE);
 		this.webSecurityCustomizers = webSecurityCustomizers;
 	}
 
@@ -214,7 +212,7 @@ public class WebSecurityConfiguration implements ImportAware, BeanClassLoaderAwa
 	}
 
 	/**
-	 * A custom verision of the Spring provided AnnotationAwareOrderComparator that uses
+	 * A custom version of the Spring provided AnnotationAwareOrderComparator that uses
 	 * {@link AnnotationUtils#findAnnotation(Class, Class)} to look on super class
 	 * instances for the {@link Order} annotation.
 	 *

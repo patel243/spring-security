@@ -52,14 +52,49 @@ public final class AesBytesEncryptor implements BytesEncryptor {
 
 	private static final String AES_GCM_ALGORITHM = "AES/GCM/NoPadding";
 
+	/**
+	 * Constructs an encryptor that uses AES encryption. Example: <code>
+	 * AesBytesEncryptor encryptor = new AesBytesEncryptor(yourPassword, 5c0744940b5c369b);
+	 * </code> Constructed encryptor uses a 16-byte IV and CBC mode encryption. To specify
+	 * a custom length IV, use
+	 * {@link AesBytesEncryptor#AesBytesEncryptor(String, CharSequence, BytesKeyGenerator)
+	 * AesBytesEncryptor(String, CharSequence, BytesKeyGenerator)}. To specify both, a
+	 * custom length IV and a different encryption mode, use
+	 * {@link AesBytesEncryptor#AesBytesEncryptor(String, CharSequence, BytesKeyGenerator, CipherAlgorithm)
+	 * AesBytesEncryptor(String, CharSequence, BytesKeyGenerator, CipherAlgorithm)}.
+	 * @param password the password value
+	 * @param salt the hex-encoded salt value
+	 */
 	public AesBytesEncryptor(String password, CharSequence salt) {
 		this(password, salt, null);
 	}
 
+	/**
+	 * Constructs an encryptor that uses AES encryption. Example: <code>
+	 * AesBytesEncryptor encryptor =
+	 * 		new AesBytesEncryptor(yourPassword, 5c0744940b5c369b, KeyGenerators.secureRandom(16));
+	 * </code> Constructed encryptor uses CBC mode encryption. To specify a different
+	 * encryption mode, use
+	 * {@link AesBytesEncryptor#AesBytesEncryptor(String, CharSequence, BytesKeyGenerator, CipherAlgorithm)
+	 * AesBytesEncryptor(String, CharSequence, BytesKeyGenerator, CipherAlgorithm)}.
+	 * @param password the password value
+	 * @param salt the hex-encoded salt value
+	 * @param ivGenerator the generator used to generate the initialization vector
+	 */
 	public AesBytesEncryptor(String password, CharSequence salt, BytesKeyGenerator ivGenerator) {
 		this(password, salt, ivGenerator, CipherAlgorithm.CBC);
 	}
 
+	/**
+	 * Constructs an encryptor that uses AES encryption. Example: <code>
+	 * AesBytesEncryptor encryptor =
+	 * 		new AesBytesEncryptor(yourPassword, 5c0744940b5c369b, KeyGenerators.secureRandom(16), CipherAlgorithm.GCM);
+	 * </code>
+	 * @param password the password value
+	 * @param salt the hex-encoded salt value
+	 * @param ivGenerator the generator used to generate the initialization vector
+	 * @param alg the {@link CipherAlgorithm} to be used
+	 */
 	public AesBytesEncryptor(String password, CharSequence salt, BytesKeyGenerator ivGenerator, CipherAlgorithm alg) {
 		this(CipherUtils.newSecretKey("PBKDF2WithHmacSHA1",
 				new PBEKeySpec(password.toCharArray(), Hex.decode(salt), 1024, 256)), ivGenerator, alg);
