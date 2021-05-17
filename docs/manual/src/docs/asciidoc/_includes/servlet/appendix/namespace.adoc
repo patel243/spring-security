@@ -4,7 +4,7 @@ This appendix provides a reference to the elements available in the security nam
 If you haven't used the namespace before, please read the <<ns-config,introductory chapter>> on namespace configuration, as this is intended as a supplement to the information there.
 Using a good quality XML editor while editing a configuration based on the schema is recommended as this will provide contextual information on which elements and attributes are available as well as comments explaining their purpose.
 The namespace is written in https://relaxng.org/[RELAX NG] Compact format and later converted into an XSD schema.
-If you are familiar with this format, you may wish to examine the https://raw.githubusercontent.com/spring-projects/spring-security/master/config/src/main/resources/org/springframework/security/config/spring-security-4.1.rnc[schema file] directly.
+If you are familiar with this format, you may wish to examine the https://raw.githubusercontent.com/spring-projects/spring-security/main/config/src/main/resources/org/springframework/security/config/spring-security-4.1.rnc[schema file] directly.
 
 [[nsa-web]]
 === Web Application Security
@@ -281,6 +281,7 @@ The default is false (the headers are enabled).
 * <<nsa-header,header>>
 * <<nsa-hpkp,hpkp>>
 * <<nsa-hsts,hsts>>
+* <<nsa-permissions-policy,permission-policy>>
 * <<nsa-referrer-policy,referrer-policy>>
 * <<nsa-xss-protection,xss-protection>>
 
@@ -517,7 +518,21 @@ On the other hand, if you specify SAMEORIGIN, you can still use the page in a fr
 
 * <<nsa-headers,headers>>
 
+[[nsa-permissions-policy]]
+==== <permissions-policy>
+Adds the https://w3c.github.io/webappsec-permissions-policy/[Permissions-Policy header] to the response.
 
+[[nsa-permissions-policy-attributes]]
+===== <permissions-policy> Attributes
+
+[[nsa-permissions-policy-policy]]
+* **policy**
+The policy value to write for the `Permissions-Policy` header
+
+[[nsa-permissions-policy-parents]]
+===== Parent Elements of <permissions-policy>
+
+* <<nsa-headers,headers>>
 
 [[nsa-xss-protection]]
 ==== <xss-protection>
@@ -1046,13 +1061,13 @@ The client secret.
 [[nsa-client-registration-client-authentication-method]]
 * **client-authentication-method**
 The method used to authenticate the Client with the Provider.
-The supported values are *client_secret_basic*, *client_secret_post* and *none* https://tools.ietf.org/html/rfc6749#section-2.1[(public clients)].
+The supported values are *client_secret_basic*, *client_secret_post*, *private_key_jwt*, *client_secret_jwt* and *none* https://tools.ietf.org/html/rfc6749#section-2.1[(public clients)].
 
 
 [[nsa-client-registration-authorization-grant-type]]
 * **authorization-grant-type**
 The OAuth 2.0 Authorization Framework defines four https://tools.ietf.org/html/rfc6749#section-1.3[Authorization Grant] types.
-The supported values are `authorization_code`, `client_credentials` and `password`.
+The supported values are `authorization_code`, `client_credentials`, `password`, as well as, extension grant type `urn:ietf:params:oauth:grant-type:jwt-bearer`.
 
 
 [[nsa-client-registration-redirect-uri]]
