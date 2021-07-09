@@ -22,7 +22,7 @@ Be sure to read the https://docs.spring.io/spring-security/site/docs/current/ref
 Extensive JavaDoc for the Spring Security code is also available in the https://docs.spring.io/spring-security/site/docs/current/api/[Spring Security API Documentation].
 
 == Quick Start
-We recommend you visit https://docs.spring.io/spring-security/site/docs/current/reference/htmlsingle/[Spring Security Reference] and read the "Getting Started" page.
+See https://docs.spring.io/spring-security/site/docs/current/reference/html5/#servlet-hello[Hello Spring Security] to get started with a "Hello, World" application.
 
 == Building from Source
 Spring Security uses a https://gradle.org[Gradle]-based build system.
@@ -43,7 +43,7 @@ git clone git@github.com:spring-projects/spring-security.git
 === Install all spring-\* jars into your local Maven cache
 [indent=0]
 ----
-./gradlew install
+./gradlew publishToMavenLocal
 ----
 
 === Compile and test; build all jars, distribution zips, and docs

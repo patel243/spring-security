@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2020 the original author or authors.
+ * Copyright 2002-2021 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -59,6 +59,7 @@ import org.springframework.security.config.annotation.web.configurers.HeadersCon
 import org.springframework.security.config.annotation.web.configurers.HttpBasicConfigurer;
 import org.springframework.security.config.annotation.web.configurers.JeeConfigurer;
 import org.springframework.security.config.annotation.web.configurers.LogoutConfigurer;
+import org.springframework.security.config.annotation.web.configurers.PasswordManagementConfigurer;
 import org.springframework.security.config.annotation.web.configurers.PortMapperConfigurer;
 import org.springframework.security.config.annotation.web.configurers.RememberMeConfigurer;
 import org.springframework.security.config.annotation.web.configurers.RequestCacheConfigurer;
@@ -141,6 +142,8 @@ public final class HttpSecurity extends AbstractConfiguredSecurityBuilder<Defaul
 	private RequestMatcher requestMatcher = AnyRequestMatcher.INSTANCE;
 
 	private FilterOrderRegistration filterOrders = new FilterOrderRegistration();
+
+	private AuthenticationManager authenticationManager;
 
 	/**
 	 * Creates a new instance
@@ -269,11 +272,11 @@ public final class HttpSecurity extends AbstractConfiguredSecurityBuilder<Defaul
 	 * 	&#064;Override
 	 * 	protected void configure(HttpSecurity http) {
 	 * 		http
-	 * 			.authorizeRequests((authorizeRequests) ->
+	 * 			.authorizeRequests((authorizeRequests) -&gt;
 	 * 				authorizeRequests
 	 * 					.antMatchers(&quot;/**&quot;).hasRole(&quot;USER&quot;)
 	 * 			)
-	 * 			.openidLogin((openidLogin) ->
+	 * 			.openidLogin((openidLogin) -&gt;
 	 * 				openidLogin
 	 * 					.permitAll()
 	 * 			);
@@ -302,48 +305,48 @@ public final class HttpSecurity extends AbstractConfiguredSecurityBuilder<Defaul
 	 *
 	 * 	&#064;Override
 	 * 	protected void configure(HttpSecurity http) throws Exception {
-	 * 		http.authorizeRequests((authorizeRequests) ->
+	 * 		http.authorizeRequests((authorizeRequests) -&gt;
 	 * 				authorizeRequests
 	 * 					.antMatchers(&quot;/**&quot;).hasRole(&quot;USER&quot;)
 	 * 			)
-	 * 			.openidLogin((openidLogin) ->
+	 * 			.openidLogin((openidLogin) -&gt;
 	 * 				openidLogin
 	 * 					.loginPage(&quot;/login&quot;)
 	 * 					.permitAll()
 	 * 					.authenticationUserDetailsService(
 	 * 						new AutoProvisioningUserDetailsService())
-	 * 					.attributeExchange((googleExchange) ->
+	 * 					.attributeExchange((googleExchange) -&gt;
 	 * 						googleExchange
 	 * 							.identifierPattern(&quot;https://www.google.com/.*&quot;)
-	 * 							.attribute((emailAttribute) ->
+	 * 							.attribute((emailAttribute) -&gt;
 	 * 								emailAttribute
 	 * 									.name(&quot;email&quot;)
 	 * 									.type(&quot;https://axschema.org/contact/email&quot;)
 	 * 									.required(true)
 	 * 							)
-	 * 							.attribute((firstnameAttribute) ->
+	 * 							.attribute((firstnameAttribute) -&gt;
 	 * 								firstnameAttribute
 	 * 									.name(&quot;firstname&quot;)
 	 * 									.type(&quot;https://axschema.org/namePerson/first&quot;)
 	 * 									.required(true)
 	 * 							)
-	 * 							.attribute((lastnameAttribute) ->
+	 * 							.attribute((lastnameAttribute) -&gt;
 	 * 								lastnameAttribute
 	 * 									.name(&quot;lastname&quot;)
 	 * 									.type(&quot;https://axschema.org/namePerson/last&quot;)
 	 * 									.required(true)
 	 * 							)
 	 * 					)
-	 * 					.attributeExchange((yahooExchange) ->
+	 * 					.attributeExchange((yahooExchange) -&gt;
 	 * 						yahooExchange
 	 * 							.identifierPattern(&quot;.*yahoo.com.*&quot;)
-	 * 							.attribute((emailAttribute) ->
+	 * 							.attribute((emailAttribute) -&gt;
 	 * 								emailAttribute
 	 * 									.name(&quot;email&quot;)
 	 * 									.type(&quot;https://schema.openid.net/contact/email&quot;)
 	 * 									.required(true)
 	 * 							)
-	 * 							.attribute((fullnameAttribute) ->
+	 * 							.attribute((fullnameAttribute) -&gt;
 	 * 								fullnameAttribute
 	 * 									.name(&quot;fullname&quot;)
 	 * 									.type(&quot;https://axschema.org/namePerson&quot;)
@@ -497,7 +500,7 @@ public final class HttpSecurity extends AbstractConfiguredSecurityBuilder<Defaul
 	 *	&#064;Override
 	 *	protected void configure(HttpSecurity http) throws Exception {
 	 *		http
-	 *			.headers((headers) ->
+	 *			.headers((headers) -&gt;
 	 *				headers
 	 *					.contentTypeOptions(withDefaults())
 	 *					.xssProtection(withDefaults())
@@ -519,7 +522,7 @@ public final class HttpSecurity extends AbstractConfiguredSecurityBuilder<Defaul
 	 *	&#064;Override
 	 *	protected void configure(HttpSecurity http) throws Exception {
 	 * 		http
-	 * 			.headers((headers) -> headers.disable());
+	 * 			.headers((headers) -&gt; headers.disable());
 	 *	}
 	 * }
 	 * </pre>
@@ -538,7 +541,7 @@ public final class HttpSecurity extends AbstractConfiguredSecurityBuilder<Defaul
 	 *	&#064;Override
 	 *	protected void configure(HttpSecurity http) throws Exception {
 	 *		http
-	 *			.headers((headers) ->
+	 *			.headers((headers) -&gt;
 	 *				headers
 	 *			 		.defaultsDisabled()
 	 *			 		.cacheControl(withDefaults())
@@ -560,9 +563,9 @@ public final class HttpSecurity extends AbstractConfiguredSecurityBuilder<Defaul
 	 * 	&#064;Override
 	 *  protected void configure(HttpSecurity http) throws Exception {
 	 *  	http
-	 *  		.headers((headers) ->
+	 *  		.headers((headers) -&gt;
 	 *  			headers
-	 *  				.frameOptions((frameOptions) -> frameOptions.disable())
+	 *  				.frameOptions((frameOptions) -&gt; frameOptions.disable())
 	 *  		);
 	 * }
 	 * </pre>
@@ -686,17 +689,17 @@ public final class HttpSecurity extends AbstractConfiguredSecurityBuilder<Defaul
 	 * 	&#064;Override
 	 * 	protected void configure(HttpSecurity http) throws Exception {
 	 * 		http
-	 * 			.authorizeRequests((authorizeRequests) ->
+	 * 			.authorizeRequests((authorizeRequests) -&gt;
 	 * 				authorizeRequests
 	 * 					.anyRequest().hasRole(&quot;USER&quot;)
 	 * 			)
-	 * 			.formLogin((formLogin) ->
+	 * 			.formLogin((formLogin) -&gt;
 	 * 				formLogin
 	 * 					.permitAll()
 	 * 			)
-	 * 			.sessionManagement((sessionManagement) ->
+	 * 			.sessionManagement((sessionManagement) -&gt;
 	 * 				sessionManagement
-	 * 					.sessionConcurrency((sessionConcurrency) ->
+	 * 					.sessionConcurrency((sessionConcurrency) -&gt;
 	 * 						sessionConcurrency
 	 * 							.maximumSessions(1)
 	 * 							.expiredUrl(&quot;/login?expired&quot;)
@@ -797,11 +800,11 @@ public final class HttpSecurity extends AbstractConfiguredSecurityBuilder<Defaul
 	 * 	&#064;Override
 	 * 	protected void configure(HttpSecurity http) throws Exception {
 	 * 		http
-	 * 			.requiresChannel((requiresChannel) ->
+	 * 			.requiresChannel((requiresChannel) -&gt;
 	 * 				requiresChannel
 	 * 					.anyRequest().requiresSecure()
 	 * 			)
-	 * 			.portMapper((portMapper) ->
+	 * 			.portMapper((portMapper) -&gt;
 	 * 				portMapper
 	 * 					.http(9090).mapsTo(9443)
 	 * 					.http(80).mapsTo(443)
@@ -910,11 +913,11 @@ public final class HttpSecurity extends AbstractConfiguredSecurityBuilder<Defaul
 	 * 	&#064;Override
 	 * 	protected void configure(HttpSecurity http) throws Exception {
 	 * 		http
-	 * 			.authorizeRequests((authorizeRequests) ->
+	 * 			.authorizeRequests((authorizeRequests) -&gt;
 	 * 				authorizeRequests
 	 * 					.antMatchers(&quot;/**&quot;).hasRole(&quot;USER&quot;)
 	 * 			)
-	 * 			.jee((jee) ->
+	 * 			.jee((jee) -&gt;
 	 * 				jee
 	 * 					.mappableRoles(&quot;USER&quot;, &quot;ADMIN&quot;)
 	 * 			);
@@ -1018,7 +1021,7 @@ public final class HttpSecurity extends AbstractConfiguredSecurityBuilder<Defaul
 	 * 	&#064;Override
 	 * 	protected void configure(HttpSecurity http) throws Exception {
 	 * 		http
-	 * 			.authorizeRequests((authorizeRequests) ->
+	 * 			.authorizeRequests((authorizeRequests) -&gt;
 	 * 				authorizeRequests
 	 * 					.antMatchers(&quot;/**&quot;).hasRole(&quot;USER&quot;)
 	 * 			)
@@ -1090,7 +1093,7 @@ public final class HttpSecurity extends AbstractConfiguredSecurityBuilder<Defaul
 	 * 	&#064;Override
 	 * 	protected void configure(HttpSecurity http) throws Exception {
 	 * 		http
-	 * 			.authorizeRequests((authorizeRequests) ->
+	 * 			.authorizeRequests((authorizeRequests) -&gt;
 	 * 				authorizeRequests
 	 * 					.antMatchers(&quot;/**&quot;).hasRole(&quot;USER&quot;)
 	 * 			)
@@ -1197,7 +1200,7 @@ public final class HttpSecurity extends AbstractConfiguredSecurityBuilder<Defaul
 	 * 	&#064;Override
 	 * 	protected void configure(HttpSecurity http) throws Exception {
 	 * 		http
-	 * 			.authorizeRequests((authorizeRequests) ->
+	 * 			.authorizeRequests((authorizeRequests) -&gt;
 	 * 				authorizeRequests
 	 * 					.antMatchers(&quot;/**&quot;).hasRole(&quot;USER&quot;)
 	 * 			)
@@ -1218,7 +1221,7 @@ public final class HttpSecurity extends AbstractConfiguredSecurityBuilder<Defaul
 	 * 	&#064;Override
 	 * 	protected void configure(HttpSecurity http) throws Exception {
 	 * 		http
-	 * 			.authorizeRequests((authorizeRequests) ->
+	 * 			.authorizeRequests((authorizeRequests) -&gt;
 	 * 				authorizeRequests
 	 * 					.antMatchers(&quot;/admin/**&quot;).hasRole(&quot;ADMIN&quot;)
 	 * 					.antMatchers(&quot;/**&quot;).hasRole(&quot;USER&quot;)
@@ -1240,7 +1243,7 @@ public final class HttpSecurity extends AbstractConfiguredSecurityBuilder<Defaul
 	 * 	&#064;Override
 	 * 	protected void configure(HttpSecurity http) throws Exception {
 	 * 		 http
-	 * 		 	.authorizeRequests((authorizeRequests) ->
+	 * 		 	.authorizeRequests((authorizeRequests) -&gt;
 	 * 		 		authorizeRequests
 	 * 			 		.antMatchers(&quot;/**&quot;).hasRole(&quot;USER&quot;)
 	 * 			 		.antMatchers(&quot;/admin/**&quot;).hasRole(&quot;ADMIN&quot;)
@@ -1261,6 +1264,84 @@ public final class HttpSecurity extends AbstractConfiguredSecurityBuilder<Defaul
 		authorizeRequestsCustomizer
 				.customize(getOrApply(new ExpressionUrlAuthorizationConfigurer<>(context)).getRegistry());
 		return HttpSecurity.this;
+	}
+
+	/**
+	 * Allows restricting access based upon the {@link HttpServletRequest} using
+	 * {@link RequestMatcher} implementations (i.e. via URL patterns).
+	 *
+	 * <h2>Example Configurations</h2>
+	 *
+	 * The most basic example is to configure all URLs to require the role "ROLE_USER".
+	 * The configuration below requires authentication to every URL and will grant access
+	 * to both the user "admin" and "user".
+	 *
+	 * <pre>
+	 * &#064;Configuration
+	 * &#064;EnableWebSecurity
+	 * public class AuthorizeUrlsSecurityConfig extends WebSecurityConfigurerAdapter {
+	 *
+	 * 	&#064;Override
+	 * 	protected void configure(HttpSecurity http) throws Exception {
+	 * 		http
+	 * 			.authorizeHttpRequests()
+	 * 				.antMatchers(&quot;/**&quot;).hasRole(&quot;USER&quot;)
+	 * 				.and()
+	 * 			.formLogin();
+	 * 	}
+	 * }
+	 * </pre>
+	 *
+	 * We can also configure multiple URLs. The configuration below requires
+	 * authentication to every URL and will grant access to URLs starting with /admin/ to
+	 * only the "admin" user. All other URLs either user can access.
+	 *
+	 * <pre>
+	 * &#064;Configuration
+	 * &#064;EnableWebSecurity
+	 * public class AuthorizeUrlsSecurityConfig extends WebSecurityConfigurerAdapter {
+	 *
+	 * 	&#064;Override
+	 * 	protected void configure(HttpSecurity http) throws Exception {
+	 * 		http
+	 * 			.authorizeHttpRequests()
+	 * 				.antMatchers(&quot;/admin&quot;).hasRole(&quot;ADMIN&quot;)
+	 * 				.antMatchers(&quot;/**&quot;).hasRole(&quot;USER&quot;)
+	 * 				.and()
+	 * 			.formLogin();
+	 * 	}
+	 * }
+	 * </pre>
+	 *
+	 * Note that the matchers are considered in order. Therefore, the following is invalid
+	 * because the first matcher matches every request and will never get to the second
+	 * mapping:
+	 *
+	 * <pre>
+	 * &#064;Configuration
+	 * &#064;EnableWebSecurity
+	 * public class AuthorizeUrlsSecurityConfig extends WebSecurityConfigurerAdapter {
+	 *
+	 * 	&#064;Override
+	 * 	protected void configure(HttpSecurity http) throws Exception {
+	 * 		http
+	 * 			.authorizeHttpRequests()
+	 * 				.antMatchers(&quot;/**&quot;).hasRole(&quot;USER&quot;)
+	 * 				.antMatchers(&quot;/admin/**&quot;).hasRole(&quot;ADMIN&quot;)
+	 * 				.and()
+	 * 			.formLogin();
+	 * 	}
+	 * }
+	 * </pre>
+	 * @return the {@link HttpSecurity} for further customizations
+	 * @throws Exception
+	 * @since 5.6
+	 * @see #requestMatcher(RequestMatcher)
+	 */
+	public AuthorizeHttpRequestsConfigurer<HttpSecurity>.AuthorizationManagerRequestMatcherRegistry authorizeHttpRequests()
+			throws Exception {
+		ApplicationContext context = getContext();
+		return getOrApply(new AuthorizeHttpRequestsConfigurer<>(context)).getRegistry();
 	}
 
 	/**
@@ -1380,11 +1461,11 @@ public final class HttpSecurity extends AbstractConfiguredSecurityBuilder<Defaul
 	 * 	&#064;Override
 	 * 	protected void configure(HttpSecurity http) throws Exception {
 	 * 		http
-	 * 			.authorizeRequests((authorizeRequests) ->
+	 * 			.authorizeRequests((authorizeRequests) -&gt;
 	 * 				authorizeRequests
 	 * 					.antMatchers(&quot;/**&quot;).hasRole(&quot;USER&quot;)
 	 * 			)
-	 * 			.requestCache((requestCache) ->
+	 * 			.requestCache((requestCache) -&gt;
 	 * 				requestCache.disable()
 	 * 			);
 	 * 	}
@@ -1428,12 +1509,12 @@ public final class HttpSecurity extends AbstractConfiguredSecurityBuilder<Defaul
 	 * 	&#064;Override
 	 * 	protected void configure(HttpSecurity http) throws Exception {
 	 * 		http
-	 * 			.authorizeRequests((authorizeRequests) ->
+	 * 			.authorizeRequests((authorizeRequests) -&gt;
 	 * 				authorizeRequests
 	 * 					.antMatchers(&quot;/**&quot;).hasRole(&quot;USER&quot;)
 	 * 			)
 	 * 			// sample exception handling customization
-	 * 			.exceptionHandling((exceptionHandling) ->
+	 * 			.exceptionHandling((exceptionHandling) -&gt;
 	 * 				exceptionHandling
 	 * 					.accessDeniedPage(&quot;/errors/access-denied&quot;)
 	 * 			);
@@ -1477,7 +1558,7 @@ public final class HttpSecurity extends AbstractConfiguredSecurityBuilder<Defaul
 	 * 	&#064;Override
 	 * 	protected void configure(HttpSecurity http) throws Exception {
 	 * 		http
-	 * 			.securityContext((securityContext) ->
+	 * 			.securityContext((securityContext) -&gt;
 	 * 				securityContext
 	 * 					.securityContextRepository(SCR)
 	 * 			);
@@ -1519,7 +1600,7 @@ public final class HttpSecurity extends AbstractConfiguredSecurityBuilder<Defaul
 	 * 	&#064;Override
 	 * 	protected void configure(HttpSecurity http) throws Exception {
 	 * 		http
-	 * 			.servletApi((servletApi) ->
+	 * 			.servletApi((servletApi) -&gt;
 	 * 				servletApi.disable()
 	 * 			);
 	 * 	}
@@ -1575,7 +1656,7 @@ public final class HttpSecurity extends AbstractConfiguredSecurityBuilder<Defaul
 	 * 	&#064;Override
 	 *     protected void configure(HttpSecurity http) throws Exception {
 	 *         http
-	 *             .csrf((csrf) -> csrf.disable());
+	 *             .csrf((csrf) -&gt; csrf.disable());
 	 *     }
 	 * }
 	 * </pre>
@@ -1651,13 +1732,13 @@ public final class HttpSecurity extends AbstractConfiguredSecurityBuilder<Defaul
 	 * 	&#064;Override
 	 * 	protected void configure(HttpSecurity http) throws Exception {
 	 * 		http
-	 * 			.authorizeRequests((authorizeRequests) ->
+	 * 			.authorizeRequests((authorizeRequests) -&gt;
 	 * 				authorizeRequests
 	 * 					.antMatchers(&quot;/**&quot;).hasRole(&quot;USER&quot;)
 	 * 			)
 	 * 			.formLogin(withDefaults())
 	 * 			// sample logout customization
-	 * 			.logout((logout) ->
+	 * 			.logout((logout) -&gt;
 	 * 				logout.deleteCookies(&quot;remove&quot;)
 	 * 					.invalidateHttpSession(false)
 	 * 					.logoutUrl(&quot;/custom-logout&quot;)
@@ -1766,13 +1847,13 @@ public final class HttpSecurity extends AbstractConfiguredSecurityBuilder<Defaul
 	 * 	&#064;Override
 	 * 	protected void configure(HttpSecurity http) throws Exception {
 	 * 		http
-	 * 			.authorizeRequests((authorizeRequests) ->
+	 * 			.authorizeRequests((authorizeRequests) -&gt;
 	 * 				authorizeRequests
 	 * 					.antMatchers(&quot;/**&quot;).hasRole(&quot;USER&quot;)
 	 * 			)
 	 * 			.formLogin(withDefaults())
 	 * 			// sample anonymous customization
-	 * 			.anonymous((anonymous) ->
+	 * 			.anonymous((anonymous) -&gt;
 	 * 				anonymous
 	 * 					.authorities(&quot;ROLE_ANON&quot;)
 	 * 			)
@@ -1792,13 +1873,13 @@ public final class HttpSecurity extends AbstractConfiguredSecurityBuilder<Defaul
 	 * 	&#064;Override
 	 * 	protected void configure(HttpSecurity http) throws Exception {
 	 * 		http
-	 * 			.authorizeRequests((authorizeRequests) ->
+	 * 			.authorizeRequests((authorizeRequests) -&gt;
 	 * 				authorizeRequests
 	 * 					.antMatchers(&quot;/**&quot;).hasRole(&quot;USER&quot;)
 	 * 			)
 	 * 			.formLogin(withDefaults())
 	 * 			// sample anonymous customization
-	 * 			.anonymous((anonymous) ->
+	 * 			.anonymous((anonymous) -&gt;
 	 * 				anonymous.disable()
 	 * 			);
 	 * 	}
@@ -1901,7 +1982,7 @@ public final class HttpSecurity extends AbstractConfiguredSecurityBuilder<Defaul
 	 * 	&#064;Override
 	 * 	protected void configure(HttpSecurity http) throws Exception {
 	 * 		http
-	 * 			.authorizeRequests((authorizeRequests) ->
+	 * 			.authorizeRequests((authorizeRequests) -&gt;
 	 * 				authorizeRequests
 	 * 					.antMatchers(&quot;/**&quot;).hasRole(&quot;USER&quot;)
 	 * 			)
@@ -1920,11 +2001,11 @@ public final class HttpSecurity extends AbstractConfiguredSecurityBuilder<Defaul
 	 * 	&#064;Override
 	 * 	protected void configure(HttpSecurity http) throws Exception {
 	 * 		http
-	 * 			.authorizeRequests((authorizeRequests) ->
+	 * 			.authorizeRequests((authorizeRequests) -&gt;
 	 * 				authorizeRequests
 	 * 					.antMatchers(&quot;/**&quot;).hasRole(&quot;USER&quot;)
 	 * 			)
-	 * 			.formLogin((formLogin) ->
+	 * 			.formLogin((formLogin) -&gt;
 	 * 				formLogin
 	 * 					.usernameParameter(&quot;username&quot;)
 	 * 					.passwordParameter(&quot;password&quot;)
@@ -2278,7 +2359,7 @@ public final class HttpSecurity extends AbstractConfiguredSecurityBuilder<Defaul
 	 * 		&#064;Override
 	 * 		protected void configure(HttpSecurity http) throws Exception {
 	 * 			http
-	 * 				.authorizeRequests((authorizeRequests) ->
+	 * 				.authorizeRequests((authorizeRequests) -&gt;
 	 * 					authorizeRequests
 	 * 						.anyRequest().authenticated()
 	 * 				)
@@ -2362,7 +2443,7 @@ public final class HttpSecurity extends AbstractConfiguredSecurityBuilder<Defaul
 	 * 	&#064;Override
 	 * 	protected void configure(HttpSecurity http) throws Exception {
 	 * 		http
-	 * 			.authorizeRequests((authorizeRequests) ->
+	 * 			.authorizeRequests((authorizeRequests) -&gt;
 	 * 				authorizeRequests
 	 * 					.anyRequest().authenticated()
 	 * 			)
@@ -2419,13 +2500,13 @@ public final class HttpSecurity extends AbstractConfiguredSecurityBuilder<Defaul
 	 * 	&#064;Override
 	 * 	protected void configure(HttpSecurity http) throws Exception {
 	 * 		http
-	 * 			.authorizeRequests((authorizeRequests) ->
+	 * 			.authorizeRequests((authorizeRequests) -&gt;
 	 * 				authorizeRequests
 	 * 					.anyRequest().authenticated()
 	 * 			)
-	 * 			.oauth2ResourceServer((oauth2ResourceServer) ->
+	 * 			.oauth2ResourceServer((oauth2ResourceServer) -&gt;
 	 * 				oauth2ResourceServer
-	 * 					.jwt((jwt) ->
+	 * 					.jwt((jwt) -&gt;
 	 * 						jwt
 	 * 							.decoder(jwtDecoder())
 	 * 					)
@@ -2512,12 +2593,12 @@ public final class HttpSecurity extends AbstractConfiguredSecurityBuilder<Defaul
 	 * 	&#064;Override
 	 * 	protected void configure(HttpSecurity http) throws Exception {
 	 * 		http
-	 * 			.authorizeRequests((authorizeRequests) ->
+	 * 			.authorizeRequests((authorizeRequests) -&gt;
 	 * 				authorizeRequests
 	 * 					.antMatchers(&quot;/**&quot;).hasRole(&quot;USER&quot;)
 	 * 			)
 	 * 			.formLogin(withDefaults())
-	 * 			.requiresChannel((requiresChannel) ->
+	 * 			.requiresChannel((requiresChannel) -&gt;
 	 * 				requiresChannel
 	 * 					.anyRequest().requiresSecure()
 	 * 			);
@@ -2586,7 +2667,7 @@ public final class HttpSecurity extends AbstractConfiguredSecurityBuilder<Defaul
 	 * 	&#064;Override
 	 * 	protected void configure(HttpSecurity http) throws Exception {
 	 * 		http
-	 * 			.authorizeRequests((authorizeRequests) ->
+	 * 			.authorizeRequests((authorizeRequests) -&gt;
 	 * 				authorizeRequests
 	 * 					.antMatchers(&quot;/**&quot;).hasRole(&quot;USER&quot;)
 	 * 			)
@@ -2604,6 +2685,57 @@ public final class HttpSecurity extends AbstractConfiguredSecurityBuilder<Defaul
 		return HttpSecurity.this;
 	}
 
+	/**
+	 * Adds support for the password management.
+	 *
+	 * <h2>Example Configuration</h2> The example below demonstrates how to configure
+	 * password management for an application. The default change password page is
+	 * "/change-password", but can be customized using
+	 * {@link PasswordManagementConfigurer#changePasswordPage(String)}.
+	 *
+	 * <pre>
+	 * &#064;Configuration
+	 * &#064;EnableWebSecurity
+	 * public class PasswordManagementSecurityConfig extends WebSecurityConfigurerAdapter {
+	 *
+	 * 	&#064;Override
+	 * 	protected void configure(HttpSecurity http) throws Exception {
+	 * 		http
+	 * 			.authorizeRequests(authorizeRequests ->
+	 * 				authorizeRequests
+	 * 					.antMatchers(&quot;/**&quot;).hasRole(&quot;USER&quot;)
+	 * 			)
+	 * 			.passwordManagement(passwordManagement ->
+	 * 				passwordManagement
+	 * 					.changePasswordPage(&quot;/custom-change-password-page&quot;)
+	 * 			);
+	 *  }
+	 * }
+	 * </pre>
+	 * @param passwordManagementCustomizer the {@link Customizer} to provide more options
+	 * for the {@link PasswordManagementConfigurer}
+	 * @return the {@link HttpSecurity} for further customizations
+	 * @throws Exception
+	 * @since 5.6
+	 */
+	public HttpSecurity passwordManagement(
+			Customizer<PasswordManagementConfigurer<HttpSecurity>> passwordManagementCustomizer) throws Exception {
+		passwordManagementCustomizer.customize(getOrApply(new PasswordManagementConfigurer<>()));
+		return HttpSecurity.this;
+	}
+
+	/**
+	 * Configure the default {@link AuthenticationManager}.
+	 * @param authenticationManager the {@link AuthenticationManager} to use
+	 * @return the {@link HttpSecurity} for further customizations
+	 * @since 5.6
+	 */
+	public HttpSecurity authenticationManager(AuthenticationManager authenticationManager) {
+		Assert.notNull(authenticationManager, "authenticationManager cannot be null");
+		this.authenticationManager = authenticationManager;
+		return HttpSecurity.this;
+	}
+
 	@Override
 	public <C> void setSharedObject(Class<C> sharedType, C object) {
 		super.setSharedObject(sharedType, object);
@@ -2611,7 +2743,12 @@ public final class HttpSecurity extends AbstractConfiguredSecurityBuilder<Defaul
 
 	@Override
 	protected void beforeConfigure() throws Exception {
-		setSharedObject(AuthenticationManager.class, getAuthenticationRegistry().build());
+		if (this.authenticationManager != null) {
+			setSharedObject(AuthenticationManager.class, this.authenticationManager);
+		}
+		else {
+			setSharedObject(AuthenticationManager.class, getAuthenticationRegistry().build());
+		}
 	}
 
 	@Override
@@ -2653,6 +2790,7 @@ public final class HttpSecurity extends AbstractConfiguredSecurityBuilder<Defaul
 	private HttpSecurity addFilterAtOffsetOf(Filter filter, int offset, Class<? extends Filter> registeredFilter) {
 		int order = this.filterOrders.getOrder(registeredFilter) + offset;
 		this.filters.add(new OrderedFilter(filter, order));
+		this.filterOrders.put(filter.getClass(), order);
 		return this;
 	}
 
@@ -2828,11 +2966,11 @@ public final class HttpSecurity extends AbstractConfiguredSecurityBuilder<Defaul
 	 * 	&#064;Override
 	 * 	protected void configure(HttpSecurity http) throws Exception {
 	 * 		http
-	 * 			.requestMatchers((requestMatchers) ->
+	 * 			.requestMatchers((requestMatchers) -&gt;
 	 * 				requestMatchers
 	 * 					.antMatchers(&quot;/api/**&quot;, &quot;/oauth/**&quot;)
 	 * 			)
-	 * 			.authorizeRequests((authorizeRequests) ->
+	 * 			.authorizeRequests((authorizeRequests) -&gt;
 	 * 				authorizeRequests
 	 * 					.antMatchers(&quot;/**&quot;).hasRole(&quot;USER&quot;)
 	 * 			)
@@ -2851,12 +2989,12 @@ public final class HttpSecurity extends AbstractConfiguredSecurityBuilder<Defaul
 	 * 	&#064;Override
 	 * 	protected void configure(HttpSecurity http) throws Exception {
 	 * 		http
-	 * 			.requestMatchers((requestMatchers) ->
+	 * 			.requestMatchers((requestMatchers) -&gt;
 	 * 				requestMatchers
 	 * 					.antMatchers(&quot;/api/**&quot;)
 	 * 					.antMatchers(&quot;/oauth/**&quot;)
 	 * 			)
-	 * 			.authorizeRequests((authorizeRequests) ->
+	 * 			.authorizeRequests((authorizeRequests) -&gt;
 	 * 				authorizeRequests
 	 * 					.antMatchers(&quot;/**&quot;).hasRole(&quot;USER&quot;)
 	 * 			)
@@ -2875,15 +3013,15 @@ public final class HttpSecurity extends AbstractConfiguredSecurityBuilder<Defaul
 	 * 	&#064;Override
 	 * 	protected void configure(HttpSecurity http) throws Exception {
 	 * 		http
-	 * 			.requestMatchers((requestMatchers) ->
+	 * 			.requestMatchers((requestMatchers) -&gt;
 	 * 				requestMatchers
 	 * 					.antMatchers(&quot;/api/**&quot;)
 	 * 			)
-	 *			.requestMatchers((requestMatchers) ->
+	 *			.requestMatchers((requestMatchers) -&gt;
 	 *			requestMatchers
 	 * 				.antMatchers(&quot;/oauth/**&quot;)
 	 * 			)
-	 * 			.authorizeRequests((authorizeRequests) ->
+	 * 			.authorizeRequests((authorizeRequests) -&gt;
 	 * 				authorizeRequests
 	 * 					.antMatchers(&quot;/**&quot;).hasRole(&quot;USER&quot;)
 	 * 			)

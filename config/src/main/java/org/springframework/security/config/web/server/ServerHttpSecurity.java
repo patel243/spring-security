@@ -91,10 +91,9 @@ import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.NimbusReactiveJwtDecoder;
 import org.springframework.security.oauth2.jwt.ReactiveJwtDecoder;
 import org.springframework.security.oauth2.jwt.ReactiveJwtDecoderFactory;
-import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.authentication.JwtReactiveAuthenticationManager;
 import org.springframework.security.oauth2.server.resource.authentication.OpaqueTokenReactiveAuthenticationManager;
-import org.springframework.security.oauth2.server.resource.authentication.ReactiveJwtAuthenticationConverterAdapter;
+import org.springframework.security.oauth2.server.resource.authentication.ReactiveJwtAuthenticationConverter;
 import org.springframework.security.oauth2.server.resource.introspection.NimbusReactiveOpaqueTokenIntrospector;
 import org.springframework.security.oauth2.server.resource.introspection.ReactiveOpaqueTokenIntrospector;
 import org.springframework.security.oauth2.server.resource.web.access.server.BearerTokenServerAccessDeniedHandler;
@@ -105,6 +104,7 @@ import org.springframework.security.web.authentication.preauth.x509.SubjectDnX50
 import org.springframework.security.web.authentication.preauth.x509.X509PrincipalExtractor;
 import org.springframework.security.web.server.DelegatingServerAuthenticationEntryPoint;
 import org.springframework.security.web.server.DelegatingServerAuthenticationEntryPoint.DelegateEntry;
+import org.springframework.security.web.server.ExchangeMatcherRedirectWebFilter;
 import org.springframework.security.web.server.MatcherSecurityWebFilterChain;
 import org.springframework.security.web.server.SecurityWebFilterChain;
 import org.springframework.security.web.server.ServerAuthenticationEntryPoint;
@@ -262,6 +262,8 @@ public class ServerHttpSecurity {
 
 	private HttpBasicSpec httpBasic;
 
+	private PasswordManagementSpec passwordManagement;
+
 	private X509Spec x509;
 
 	private final RequestCacheSpec requestCache = new RequestCacheSpec();
@@ -398,7 +400,7 @@ public class ServerHttpSecurity {
 	 * 	    http
 	 * 	        // ...
 	 * 	        .redirectToHttps()
-	 * 	            .httpsRedirectWhen((serverWebExchange) ->
+	 * 	            .httpsRedirectWhen((serverWebExchange) -&gt;
 	 * 	            	serverWebExchange.getRequest().getHeaders().containsKey("X-Requires-Https"))
 	 * 	    return http.build();
 	 * 	}
@@ -433,9 +435,9 @@ public class ServerHttpSecurity {
 	 * 	public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
 	 * 	    http
 	 * 	        // ...
-	 * 	        .redirectToHttps((redirectToHttps) ->
+	 * 	        .redirectToHttps((redirectToHttps) -&gt;
 	 * 	        	redirectToHttps
-	 * 	            	.httpsRedirectWhen((serverWebExchange) ->
+	 * 	            	.httpsRedirectWhen((serverWebExchange) -&gt;
 	 * 	            		serverWebExchange.getRequest().getHeaders().containsKey("X-Requires-Https"))
 	 * 	            );
 	 * 	    return http.build();
@@ -503,7 +505,7 @@ public class ServerHttpSecurity {
 	 *  public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
 	 *      http
 	 *          // ...
-	 *          .csrf((csrf) ->
+	 *          .csrf((csrf) -&gt;
 	 *              csrf.disabled()
 	 *          );
 	 *      return http.build();
@@ -518,7 +520,7 @@ public class ServerHttpSecurity {
 	 *  public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
 	 *      http
 	 *          // ...
-	 *          .csrf((csrf) ->
+	 *          .csrf((csrf) -&gt;
 	 *              csrf
 	 *                  // Handle CSRF failures
 	 *                  .accessDeniedHandler(accessDeniedHandler)
@@ -609,7 +611,7 @@ public class ServerHttpSecurity {
 	 *  public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
 	 *      http
 	 *          // ...
-	 *          .anonymous((anonymous) ->
+	 *          .anonymous((anonymous) -&gt;
 	 *              anonymous
 	 *                  .key("key")
 	 *                  .authorities("ROLE_ANONYMOUS")
@@ -662,7 +664,7 @@ public class ServerHttpSecurity {
 	 *  public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
 	 *      http
 	 *          // ...
-	 *          .httpBasic((httpBasic) ->
+	 *          .httpBasic((httpBasic) -&gt;
 	 *              httpBasic
 	 *                  // used for authenticating the credentials
 	 *                  .authenticationManager(authenticationManager)
@@ -681,6 +683,56 @@ public class ServerHttpSecurity {
 			this.httpBasic = new HttpBasicSpec();
 		}
 		httpBasicCustomizer.customize(this.httpBasic);
+		return this;
+	}
+
+	/**
+	 * Configures password management. An example configuration is provided below:
+	 *
+	 * <pre class="code">
+	 *  &#064;Bean
+	 *  public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
+	 *      http
+	 *          // ...
+	 *          .passwordManagement();
+	 *      return http.build();
+	 *  }
+	 * </pre>
+	 * @return the {@link PasswordManagementSpec} to customize
+	 * @since 5.6
+	 */
+	public PasswordManagementSpec passwordManagement() {
+		if (this.passwordManagement == null) {
+			this.passwordManagement = new PasswordManagementSpec();
+		}
+		return this.passwordManagement;
+	}
+
+	/**
+	 * Configures password management. An example configuration is provided below:
+	 *
+	 * <pre class="code">
+	 *  &#064;Bean
+	 *  public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
+	 *      http
+	 *          // ...
+	 *          .passwordManagement(passwordManagement ->
+	 *          	// Custom change password page.
+	 *          	passwordManagement.changePasswordPage("/custom-change-password-page")
+	 *          );
+	 *      return http.build();
+	 *  }
+	 * </pre>
+	 * @param passwordManagementCustomizer the {@link Customizer} to provide more options
+	 * for the {@link PasswordManagementSpec}
+	 * @return the {@link ServerHttpSecurity} to customize
+	 * @since 5.6
+	 */
+	public ServerHttpSecurity passwordManagement(Customizer<PasswordManagementSpec> passwordManagementCustomizer) {
+		if (this.passwordManagement == null) {
+			this.passwordManagement = new PasswordManagementSpec();
+		}
+		passwordManagementCustomizer.customize(this.passwordManagement);
 		return this;
 	}
 
@@ -721,7 +773,7 @@ public class ServerHttpSecurity {
 	 *  public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
 	 *      http
 	 *          // ...
-	 *          .formLogin((formLogin) ->
+	 *          .formLogin((formLogin) -&gt;
 	 *              formLogin
 	 *              	// used for authenticating the credentials
 	 *              	.authenticationManager(authenticationManager)
@@ -783,7 +835,7 @@ public class ServerHttpSecurity {
 	 *  &#064;Bean
 	 *  public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
 	 *      http
-	 *          .x509((x509) ->
+	 *          .x509((x509) -&gt;
 	 *              x509
 	 *          	    .authenticationManager(authenticationManager)
 	 *                  .principalExtractor(principalExtractor)
@@ -841,7 +893,7 @@ public class ServerHttpSecurity {
 	 *  public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
 	 *      http
 	 *          // ...
-	 *          .oauth2Login((oauth2Login) ->
+	 *          .oauth2Login((oauth2Login) -&gt;
 	 *              oauth2Login
 	 *                  .authenticationConverter(authenticationConverter)
 	 *                  .authenticationManager(manager)
@@ -892,7 +944,7 @@ public class ServerHttpSecurity {
 	 *  public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
 	 *      http
 	 *          // ...
-	 *          .oauth2Client((oauth2Client) ->
+	 *          .oauth2Client((oauth2Client) -&gt;
 	 *              oauth2Client
 	 *                  .clientRegistrationRepository(clientRegistrationRepository)
 	 *                  .authorizedClientRepository(authorizedClientRepository)
@@ -943,9 +995,9 @@ public class ServerHttpSecurity {
 	 *  public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
 	 *      http
 	 *          // ...
-	 *          .oauth2ResourceServer((oauth2ResourceServer) ->
+	 *          .oauth2ResourceServer((oauth2ResourceServer) -&gt;
 	 *              oauth2ResourceServer
-	 *                  .jwt((jwt) ->
+	 *                  .jwt((jwt) -&gt;
 	 *                      jwt
 	 *                          .publicKey(publicKey())
 	 *                  )
@@ -1029,15 +1081,15 @@ public class ServerHttpSecurity {
 	 *  public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
 	 *      http
 	 *          // ...
-	 *          .headers((headers) ->
+	 *          .headers((headers) -&gt;
 	 *              headers
 	 *                  // customize frame options to be same origin
-	 *                  .frameOptions((frameOptions) ->
+	 *                  .frameOptions((frameOptions) -&gt;
 	 *                      frameOptions
 	 *                          .mode(XFrameOptionsServerHttpHeadersWriter.Mode.SAMEORIGIN)
 	 *                   )
 	 *                  // disable cache control
-	 *                  .cache((cache) ->
+	 *                  .cache((cache) -&gt;
 	 *                      cache
 	 *                          .disable()
 	 *                  )
@@ -1090,7 +1142,7 @@ public class ServerHttpSecurity {
 	 *  public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
 	 *      http
 	 *          // ...
-	 *          .exceptionHandling((exceptionHandling) ->
+	 *          .exceptionHandling((exceptionHandling) -&gt;
 	 *              exceptionHandling
 	 *                  // customize how to request for authentication
 	 *                  .authenticationEntryPoint(entryPoint)
@@ -1125,10 +1177,10 @@ public class ServerHttpSecurity {
 	 *              .pathMatchers(HttpMethod.POST, "/users").hasAuthority("USER_POST")
 	 *              // a request to /users/{username} requires the current authentication's username
 	 *              // to be equal to the {username}
-	 *              .pathMatchers("/users/{username}").access((authentication, context) ->
+	 *              .pathMatchers("/users/{username}").access((authentication, context) -&gt;
 	 *                  authentication
 	 *                      .map(Authentication::getName)
-	 *                      .map((username) -> username.equals(context.getVariables().get("username")))
+	 *                      .map((username) -&gt; username.equals(context.getVariables().get("username")))
 	 *                      .map(AuthorizationDecision::new)
 	 *              )
 	 *              // allows providing a custom matching strategy that requires the role "ROLE_CUSTOM"
@@ -1155,7 +1207,7 @@ public class ServerHttpSecurity {
 	 *  public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
 	 *      http
 	 *          // ...
-	 *          .authorizeExchange((exchanges) ->
+	 *          .authorizeExchange((exchanges) -&gt;
 	 *              exchanges
 	 *                  // any URL that starts with /admin/ requires the role "ROLE_ADMIN"
 	 *                  .pathMatchers("/admin/**").hasRole("ADMIN")
@@ -1163,10 +1215,10 @@ public class ServerHttpSecurity {
 	 *                  .pathMatchers(HttpMethod.POST, "/users").hasAuthority("USER_POST")
 	 *                  // a request to /users/{username} requires the current authentication's username
 	 *                  // to be equal to the {username}
-	 *                  .pathMatchers("/users/{username}").access((authentication, context) ->
+	 *                  .pathMatchers("/users/{username}").access((authentication, context) -&gt;
 	 *                      authentication
 	 *                          .map(Authentication::getName)
-	 *                          .map((username) -> username.equals(context.getVariables().get("username")))
+	 *                          .map((username) -&gt; username.equals(context.getVariables().get("username")))
 	 *                          .map(AuthorizationDecision::new)
 	 *                  )
 	 *                  // allows providing a custom matching strategy that requires the role "ROLE_CUSTOM"
@@ -1224,7 +1276,7 @@ public class ServerHttpSecurity {
 	 *  public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
 	 *      http
 	 *          // ...
-	 *          .logout((logout) ->
+	 *          .logout((logout) -&gt;
 	 *              logout
 	 *                  // configures how log out is done
 	 *                  .logoutHandler(logoutHandler)
@@ -1280,7 +1332,7 @@ public class ServerHttpSecurity {
 	 *  public SecurityWebFilterChain springSecurityFilterChain(ServerHttpSecurity http) {
 	 *      http
 	 *          // ...
-	 *          .requestCache((requestCache) ->
+	 *          .requestCache((requestCache) -&gt;
 	 *              requestCache
 	 *                  // configures how the request is cached
 	 *                  .requestCache(customRequestCache)
@@ -1348,6 +1400,9 @@ public class ServerHttpSecurity {
 				this.httpBasic.securityContextRepository(NoOpServerSecurityContextRepository.getInstance());
 			}
 			this.httpBasic.configure(this);
+		}
+		if (this.passwordManagement != null) {
+			this.passwordManagement.configure(this);
 		}
 		if (this.formLogin != null) {
 			if (this.formLogin.authenticationManager == null) {
@@ -1495,6 +1550,13 @@ public class ServerHttpSecurity {
 			return (T) this.context.getBean(names[0]);
 		}
 		return null;
+	}
+
+	private <T> String[] getBeanNamesForTypeOrEmpty(Class<T> beanClass) {
+		if (this.context == null) {
+			return new String[0];
+		}
+		return this.context.getBeanNamesForType(beanClass);
 	}
 
 	protected void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
@@ -2013,6 +2075,53 @@ public class ServerHttpSecurity {
 	}
 
 	/**
+	 * Configures password management.
+	 *
+	 * @author Evgeniy Cheban
+	 * @since 5.6
+	 * @see #passwordManagement()
+	 */
+	public final class PasswordManagementSpec {
+
+		private static final String WELL_KNOWN_CHANGE_PASSWORD_PATTERN = "/.well-known/change-password";
+
+		private static final String DEFAULT_CHANGE_PASSWORD_PAGE = "/change-password";
+
+		private String changePasswordPage = DEFAULT_CHANGE_PASSWORD_PAGE;
+
+		/**
+		 * Sets the change password page. Defaults to
+		 * {@link PasswordManagementSpec#DEFAULT_CHANGE_PASSWORD_PAGE}.
+		 * @param changePasswordPage the change password page
+		 * @return the {@link PasswordManagementSpec} to continue configuring
+		 */
+		public PasswordManagementSpec changePasswordPage(String changePasswordPage) {
+			Assert.hasText(changePasswordPage, "changePasswordPage cannot be empty");
+			this.changePasswordPage = changePasswordPage;
+			return this;
+		}
+
+		/**
+		 * Allows method chaining to continue configuring the {@link ServerHttpSecurity}.
+		 * @return the {@link ServerHttpSecurity} to continue configuring
+		 */
+		public ServerHttpSecurity and() {
+			return ServerHttpSecurity.this;
+		}
+
+		protected void configure(ServerHttpSecurity http) {
+			ExchangeMatcherRedirectWebFilter changePasswordWebFilter = new ExchangeMatcherRedirectWebFilter(
+					new PathPatternParserServerWebExchangeMatcher(WELL_KNOWN_CHANGE_PASSWORD_PATTERN),
+					this.changePasswordPage);
+			http.addFilterBefore(changePasswordWebFilter, SecurityWebFiltersOrder.AUTHENTICATION);
+		}
+
+		private PasswordManagementSpec() {
+		}
+
+	}
+
+	/**
 	 * Configures Form Based authentication
 	 *
 	 * @author Rob Winch
@@ -2223,7 +2332,10 @@ public class ServerHttpSecurity {
 			}
 			if (loginPage != null) {
 				http.addFilterAt(loginPage, SecurityWebFiltersOrder.LOGIN_PAGE_GENERATING);
-				http.addFilterAt(new LogoutPageGeneratingWebFilter(), SecurityWebFiltersOrder.LOGOUT_PAGE_GENERATING);
+				if (http.logout != null) {
+					http.addFilterAt(new LogoutPageGeneratingWebFilter(),
+							SecurityWebFiltersOrder.LOGOUT_PAGE_GENERATING);
+				}
 			}
 		}
 
@@ -2420,7 +2532,9 @@ public class ServerHttpSecurity {
 		 * Configures {@code Feature-Policy} response header.
 		 * @param policyDirectives the policy
 		 * @return the {@link FeaturePolicySpec} to configure
+		 * @deprecated Use {@link #permissionsPolicy(Customizer)} instead.
 		 */
+		@Deprecated
 		public FeaturePolicySpec featurePolicy(String policyDirectives) {
 			return new FeaturePolicySpec(policyDirectives);
 		}
@@ -3811,8 +3925,7 @@ public class ServerHttpSecurity {
 
 			private ReactiveJwtDecoder jwtDecoder;
 
-			private Converter<Jwt, ? extends Mono<? extends AbstractAuthenticationToken>> jwtAuthenticationConverter = new ReactiveJwtAuthenticationConverterAdapter(
-					new JwtAuthenticationConverter());
+			private Converter<Jwt, ? extends Mono<? extends AbstractAuthenticationToken>> jwtAuthenticationConverter;
 
 			/**
 			 * Configures the {@link ReactiveAuthenticationManager} to use
@@ -3890,7 +4003,16 @@ public class ServerHttpSecurity {
 			}
 
 			protected Converter<Jwt, ? extends Mono<? extends AbstractAuthenticationToken>> getJwtAuthenticationConverter() {
-				return this.jwtAuthenticationConverter;
+				if (this.jwtAuthenticationConverter != null) {
+					return this.jwtAuthenticationConverter;
+				}
+
+				if (getBeanNamesForTypeOrEmpty(ReactiveJwtAuthenticationConverter.class).length > 0) {
+					return getBean(ReactiveJwtAuthenticationConverter.class);
+				}
+				else {
+					return new ReactiveJwtAuthenticationConverter();
+				}
 			}
 
 			private ReactiveAuthenticationManager getAuthenticationManager() {

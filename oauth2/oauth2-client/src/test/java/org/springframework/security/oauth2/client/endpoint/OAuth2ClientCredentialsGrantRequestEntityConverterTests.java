@@ -16,8 +16,13 @@
 
 package org.springframework.security.oauth2.client.endpoint;
 
-import org.junit.Before;
-import org.junit.Test;
+import java.io.UnsupportedEncodingException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
 
 import org.springframework.core.convert.converter.Converter;
@@ -46,7 +51,7 @@ public class OAuth2ClientCredentialsGrantRequestEntityConverterTests {
 
 	private OAuth2ClientCredentialsGrantRequestEntityConverter converter;
 
-	@Before
+	@BeforeEach
 	public void setup() {
 		this.converter = new OAuth2ClientCredentialsGrantRequestEntityConverter();
 	}
@@ -122,6 +127,39 @@ public class OAuth2ClientCredentialsGrantRequestEntityConverterTests {
 		assertThat(headers.getContentType())
 				.isEqualTo(MediaType.valueOf(MediaType.APPLICATION_FORM_URLENCODED_VALUE + ";charset=UTF-8"));
 		assertThat(headers.getFirst(HttpHeaders.AUTHORIZATION)).startsWith("Basic ");
+		MultiValueMap<String, String> formParameters = (MultiValueMap<String, String>) requestEntity.getBody();
+		assertThat(formParameters.getFirst(OAuth2ParameterNames.GRANT_TYPE))
+				.isEqualTo(AuthorizationGrantType.CLIENT_CREDENTIALS.getValue());
+		assertThat(formParameters.getFirst(OAuth2ParameterNames.SCOPE)).contains(clientRegistration.getScopes());
+	}
+
+	// gh-9610
+	@SuppressWarnings("unchecked")
+	@Test
+	public void convertWhenSpecialCharactersThenConvertsWithEncodedClientCredentials()
+			throws UnsupportedEncodingException {
+		String clientCredentialWithAnsiKeyboardSpecialCharacters = "~!@#$%^&*()_+{}|:\"<>?`-=[]\\;',./ ";
+		// @formatter:off
+		ClientRegistration clientRegistration = TestClientRegistrations.clientCredentials()
+				.clientId(clientCredentialWithAnsiKeyboardSpecialCharacters)
+				.clientSecret(clientCredentialWithAnsiKeyboardSpecialCharacters)
+				.build();
+		// @formatter:on
+		OAuth2ClientCredentialsGrantRequest clientCredentialsGrantRequest = new OAuth2ClientCredentialsGrantRequest(
+				clientRegistration);
+		RequestEntity<?> requestEntity = this.converter.convert(clientCredentialsGrantRequest);
+		assertThat(requestEntity.getMethod()).isEqualTo(HttpMethod.POST);
+		assertThat(requestEntity.getUrl().toASCIIString())
+				.isEqualTo(clientRegistration.getProviderDetails().getTokenUri());
+		HttpHeaders headers = requestEntity.getHeaders();
+		assertThat(headers.getAccept()).contains(MediaType.APPLICATION_JSON_UTF8);
+		assertThat(headers.getContentType())
+				.isEqualTo(MediaType.valueOf(MediaType.APPLICATION_FORM_URLENCODED_VALUE + ";charset=UTF-8"));
+		String urlEncodedClientCredential = URLEncoder.encode(clientCredentialWithAnsiKeyboardSpecialCharacters,
+				StandardCharsets.UTF_8.toString());
+		String clientCredentials = Base64.getEncoder().encodeToString(
+				(urlEncodedClientCredential + ":" + urlEncodedClientCredential).getBytes(StandardCharsets.UTF_8));
+		assertThat(headers.getFirst(HttpHeaders.AUTHORIZATION)).isEqualTo("Basic " + clientCredentials);
 		MultiValueMap<String, String> formParameters = (MultiValueMap<String, String>) requestEntity.getBody();
 		assertThat(formParameters.getFirst(OAuth2ParameterNames.GRANT_TYPE))
 				.isEqualTo(AuthorizationGrantType.CLIENT_CREDENTIALS.getValue());

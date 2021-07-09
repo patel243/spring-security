@@ -27,7 +27,6 @@ import org.gradle.api.plugins.JavaPlugin
  * <li>sockDependencies</li>
  * <li>seleniumDependencies</li>
  * <li>gebDependencies</li>
- * <li>powerMockDependencies</li>
  * <li>slf4jDependencies</li>
  * <li>jstlDependencies</li>
  * <li>apachedsDependencies</li>
@@ -61,28 +60,6 @@ public class DependencySetPlugin implements Plugin<Project> {
 			"org.codehaus.groovy:groovy-all"
 		]
 
-		project.ext.powerMockDependencies = [
-				"org.powermock:powermock-core",
-				"org.powermock:powermock-api-support",
-				"org.powermock:powermock-module-junit4-common",
-				"org.powermock:powermock-module-junit4",
-				project.dependencies.create("org.powermock:powermock-api-mockito") {
-					exclude group: 'org.mockito', module: 'mockito-all'
-				},
-				"org.powermock:powermock-reflect"
-		]
-
-		project.ext.powerMock2Dependencies = [
-				"org.powermock:powermock-core",
-				"org.powermock:powermock-api-support",
-				"org.powermock:powermock-module-junit4-common",
-				"org.powermock:powermock-module-junit4",
-				project.dependencies.create("org.powermock:powermock-api-mockito2") {
-					exclude group: 'org.mockito', module: 'mockito-all'
-				},
-				"org.powermock:powermock-reflect"
-		]
-
 		project.ext.slf4jDependencies = [
 			"org.slf4j:slf4j-api",
 			"org.slf4j:jcl-over-slf4j",
@@ -97,10 +74,14 @@ public class DependencySetPlugin implements Plugin<Project> {
 		]
 
 		project.ext.testDependencies = [
-			"junit:junit",
 			"org.mockito:mockito-core",
 			"org.springframework:spring-test",
-			"org.assertj:assertj-core"
+			"org.assertj:assertj-core",
+			"org.junit.jupiter:junit-jupiter-api",
+			"org.junit.jupiter:junit-jupiter-params",
+			"org.junit.jupiter:junit-jupiter-engine",
+			"org.mockito:mockito-core",
+			"org.mockito:mockito-junit-jupiter"
 		]
 
 		project.ext.jstlDependencies = [
